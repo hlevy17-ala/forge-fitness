@@ -5,12 +5,10 @@ RUN npm install -g pnpm@10.33.0
 FROM base AS deps
 WORKDIR /app
 
-# Copy manifests first so Docker cache layer is reused when code-only changes
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-COPY lib/api-zod/package.json ./lib/api-zod/
-COPY lib/db/package.json ./lib/db/
-COPY artifacts/api-server/package.json ./artifacts/api-server/
-COPY artifacts/workout-tracker/package.json ./artifacts/workout-tracker/
+COPY lib/ ./lib/
+COPY artifacts/ ./artifacts/
+COPY scripts/package.json ./scripts/
 
 RUN pnpm install --frozen-lockfile
 
