@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "workout-tracker",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["/usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs", "--filter", "workout-tracker", "dev"],
+      "env": {
+        "PORT": "5173",
+        "BASE_PATH": "/"
+      },
+      "port": 5173
+    }
+  ]
+}

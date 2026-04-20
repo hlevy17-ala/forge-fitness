@@ -1,0 +1,47 @@
+Global observations
+The name "Lifestyle Tracker" undersells the product. Everything inside is fitness/body-comp focused, so something like "Harry's Training OS," "Liftboard," or just a cleaner brand would be more honest. The shield logo also doesn't say anything about fitness — consider a dumbbell or chart glyph. I'd also flag that there's no onboarding or empty state anywhere: a new user opening this would have no idea what to import, what "Systemic Load" means, or why deficits are assumed to be "fat loss." A small "Getting started" card on Insights when the DB is empty would help a lot.
+Tabs-as-nav works at six items, but the labels are inconsistent in tone — "Insights" and "Nutrition" are plain English while "Systemic" and "Movements" feel like jargon. I'd rename "Movements" → "Exercises," "Systemic" → "Muscle Groups" (or roll it into Insights), and keep "Biometrics" since it's accurate.
+Insights tab
+This is the strongest tab and should be the anchor. The KPI row ("Sessions, Volume, Body Weight, Avg Deficit") with week-over-week deltas is exactly right. A few specific issues:
+The "-20% vs last week" on Volume is presented in red, but a volume drop after hitting PRs on lighter isolation machines is often a feature, not a bug. Consider contextualizing with training phase, or at minimum giving users a way to mute the color judgment. The "Body Weight: 0 lbs vs last week — " delta icon is a flat dash in gray, which is fine, but "257 lbs" as a headline number without a goal/target feels lonely — a tiny goal progress bar here would give it meaning.
+"Most Improved" is showing +416.7% on Machine Hip Adductor (30 → 155 lbs avg). That's a great hook, but it's almost certainly driven by a single early session with a throwaway weight. I'd add a minimum-sessions filter (e.g., "≥3 sessions in each window") to avoid misleading spikes, and show the absolute lbs gained alongside the percentage.
+The GitHub-style "Training Consistency" heatmap is great but is cramped — it only shows ~16 weeks and the month labels ("Dec Jan" overlapping) are unreadable. Either widen it, space the month labels, or add a tooltip on hover showing the date and volume.
+"Weekly Volume by Muscle" as a stacked-ish line chart is visually busy with 6 colors overlapping. A stacked bar chart per week would read much faster. The y-axis also goes to 32,000 lbs with no explanation — add a unit label.
+"Personal Records Timeline" is nice but it's just a flat list of PRs. The "9 this month" badge is the insight — lead with that. Also consider grouping PRs by muscle group or showing a sparkline of the lift's progression.
+"Calorie Adherence: 100% days in deficit" with 5 bars is underwhelming — that's basically just the last 5 days. Either pull 30 days by default or hide this card until there's meaningful data.
+The "Customize" button in the top right is promising but I didn't explore whether it actually lets you reorder/hide cards — if it doesn't, either ship that or remove the button.
+Movements tab
+The "Personal Records" strip at the top is a horizontal scroll of cards, which is fine, but it's visually identical to the Insights PR list — pick one home for PRs. I'd remove it from here and let this tab be purely about per-exercise analysis.
+The dropdown defaulting to "Air Squats" (which has one data point) is a bad first impression. Default to the exercise with the most sessions, or show a multi-select.
+"History vs Last" toggle — unclear what "vs Last" does without clicking it. Label it more explicitly: "Full history" / "Last session comparison."
+The "Average Weight per Set" chart showing a single dot at 16 lbs for Air Squats is essentially a broken-looking chart. When n=1, show a big numeric card instead of a chart axis.
+Missing features I'd expect here: best set (heaviest weight × reps), estimated 1RM, rep-range breakdown, and a "note" field for each session. Also no way to view raw sets — the app analyzes data but never lets you see the underlying log, which will frustrate power users.
+Systemic tab
+The "Average Weight per Set" chart here is hard to read with seven lines at once. The click-to-toggle and double-click-to-isolate interaction is a power move but undiscoverable — add a small "(?)" tooltip. Default to showing one group and let users add more.
+"Regional Volume History" is the more useful chart of the two but has smoothed curves (splines) that misrepresent discrete session data — switch to straight-line segments or bars. The y-axis labels are also truncated ("3000lbs" is showing as "3000lbs" with a cut leading digit, and "5000lbs" shows as "5000lbs" — the container is clipping).
+I'd seriously consider merging Systemic into Insights as a "Muscle group breakdown" section. As a standalone tab it doesn't earn its place.
+Biometrics tab
+The logging form is clean and the "re-entering same date updates the existing entry" note is a thoughtful touch.
+Bug: The Body Weight chart's y-axis labels are cut off — showing "58.75, 57.85, 257.4, 256.95" instead of the full "258.75, 257.85, …". The first two labels are getting clipped. That's a CSS padding issue that should be an easy fix but looks really bad.
+Big missing piece: no body fat %, no additional measurements (hips, chest, arms, thighs, neck — which you'd need for Navy BF calc), no photo tracking, no sleep/HRV/steps. For an MVP this might be scope, but "Biometrics" is a broad word for two fields. I'd either rename the tab "Weight & Waist" or expand it.
+A 7-day / 30-day / all-time moving average overlay would make the trend much more readable, especially since daily weigh-ins are noisy.
+Nutrition tab
+Simple, but the model is too simple. Tracking only "Consumed" and "Burned" as single numbers means:
+Users have no way to log macros (protein is the one everyone cares about). Add at minimum a protein field.
+"Burned" is ambiguous — does it include BMR, just exercise, or TDEE? The sample data (2200 consumed, 400 burned, resulting in a positive deficit) suggests you're computing it as TDEE, not exercise calories. Label it accordingly ("Total burned / TDEE") or let the user set a maintenance number and only log food.
+No meal logging, no food database, no barcode, no water. This is fine for MVP scope but you should decide whether you're competing with MyFitnessPal (if so, this is nowhere close) or just providing a dashboard over numbers the user gets elsewhere (then be explicit about that positioning).
+The "Daily Deficit" chart duplicates what's already on Insights. Cut it here.
+Import tab
+The generic "any CSV, map columns in next step" approach is ambitious and the right call for an MVP — don't try to be Strong or Hevy on day one. A few adds:
+Show a sample CSV / template download so users know the expected shape. List supported sources ("works out of the box with Strong, Hevy, FitNotes exports") even if it's just a hint.
+After import, show a summary ("Imported 142 sets across 37 sessions and 18 exercises") and an undo / rollback option. Right now it's unclear what happens and whether imports are destructive.
+No manual session entry anywhere in the app is a significant gap. Most users will want to log a workout directly, not only via CSV. Either add a "Log session" tab or a big "+ New session" floating button.
+Also consider export — users will want to pull their data back out, especially given the Replit URL makes this feel impermanent.
+Things I'd cut
+The "Systemic" tab as a standalone (merge into Insights). The "Personal Records" strip at the top of Movements (duplicate). The Daily Deficit chart on Nutrition (duplicate of Insights' Calorie Adherence).
+Things I'd add
+A manual workout logger (critical). A protein/macro field on Nutrition. Goals/targets (bodyweight goal, weekly session goal, protein goal) — the app measures a lot but aims at nothing. Export data. Empty states and a short onboarding. Unit toggle (kg/lb, in/cm). Authentication and multi-user if this is going public — right now the name suggests it's single-tenant for Harry.
+Things I'd change
+Rename vague tabs. Fix the clipped y-axis labels on Biometrics. Add minimum-session thresholds to "Most Improved." Swap the stacked-ish volume line chart for stacked bars. Clarify what "Burned" means on Nutrition. Make the "Customize" button actually do something visible or remove it.
+Bottom line
+As an MVP this is already more visually credible than 80% of side-project trackers I've seen — the design language is consistent and the core charts are the right charts. The biggest gaps are (1) no way to log a workout without a CSV, (2) nutrition is too thin to be useful, and (3) several charts have minor but very visible rendering bugs that undercut the premium feel. Fix those three and you've got something you could legitimately show to users beyond yourself.

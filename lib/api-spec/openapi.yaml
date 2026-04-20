@@ -1,0 +1,1543 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: workouts
+    description: Workout data operations
+  - name: bodyMetrics
+    description: Body metrics operations
+  - name: nutrition
+    description: Nutrition tracking operations
+  - name: settings
+    description: User settings operations
+  - name: auth
+    description: Authentication operations
+paths:
+  /auth/guest:
+    post:
+      operationId: createGuestSession
+      tags: [auth]
+      summary: Create guest session
+      description: Auto-provision an anonymous guest account and return a session token
+      responses:
+        "200":
+          description: Guest session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthVerifyOtpResponse"
+
+  /auth/request-otp:
+    post:
+      operationId: requestOtp
+      tags: [auth]
+      summary: Request OTP
+      description: Send a one-time password to the given email address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRequestOtpBody"
+      responses:
+        "200":
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRequestOtpResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/verify-otp:
+    post:
+      operationId: verifyOtp
+      tags: [auth]
+      summary: Verify OTP
+      description: Verify the OTP and receive a session token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthVerifyOtpBody"
+      responses:
+        "200":
+          description: Verification successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthVerifyOtpResponse"
+        "400":
+          description: Invalid or expired OTP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      description: Invalidate the current session token
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRequestOtpResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      description: Returns the currently authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /workouts/upload:
+    post:
+      operationId: uploadWorkoutCsv
+      tags: [workouts]
+      summary: Upload workout CSV
+      description: Parse and store workout data from a CSV export. Skips cardio and warmup rows. Duplicate sets are ignored.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+                - file
+      responses:
+        "200":
+          description: Upload result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /workouts/by-exercise:
+    get:
+      operationId: getWorkoutsByExercise
+      tags: [workouts]
+      summary: Get total weight by exercise over time
+      description: Returns total weight lifted (kg) per exercise grouped by workout date
+      responses:
+        "200":
+          description: Exercise progress data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ExerciseDataPoint"
+
+  /workouts/by-muscle-group:
+    get:
+      operationId: getWorkoutsByMuscleGroup
+      tags: [workouts]
+      summary: Get total weight by muscle group over time
+      description: Returns total weight lifted (kg) per muscle group grouped by workout date
+      parameters:
+        - name: startDate
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter results on or after this date (YYYY-MM-DD)
+        - name: endDate
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter results on or before this date (YYYY-MM-DD)
+      responses:
+        "200":
+          description: Muscle group progress data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MuscleGroupDataPoint"
+
+  /workouts/exercises:
+    get:
+      operationId: getExerciseList
+      tags: [workouts]
+      summary: Get list of all exercises
+      description: Returns distinct exercise names from all stored workout data
+      responses:
+        "200":
+          description: List of exercises
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /workouts/heatmap:
+    get:
+      operationId: getWorkoutHeatmap
+      tags: [workouts]
+      summary: Get training consistency heatmap data
+      description: Returns total volume per day across all workout sessions
+      parameters:
+        - name: startDate
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter results on or after this date (YYYY-MM-DD)
+        - name: endDate
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter results on or before this date (YYYY-MM-DD)
+      responses:
+        "200":
+          description: Heatmap data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HeatmapDataPoint"
+
+  /workouts/most-improved:
+    get:
+      operationId: getMostImproved
+      tags: [workouts]
+      summary: Get most improved exercises
+      description: Returns exercises with the highest percentage weight gain (first vs most recent session)
+      parameters:
+        - name: startDate
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter sessions on or after this date (YYYY-MM-DD)
+        - name: endDate
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter sessions on or before this date (YYYY-MM-DD)
+      responses:
+        "200":
+          description: Most improved exercises
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MostImprovedItem"
+
+  /workouts/log:
+    post:
+      operationId: logWorkout
+      tags: [workouts]
+      summary: Manually log a workout session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogWorkoutBody"
+      responses:
+        "200":
+          description: Log result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogWorkoutResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /workouts/personal-records:
+    get:
+      operationId: getPersonalRecords
+      tags: [workouts]
+      summary: Get personal records
+      description: Returns the all-time max single-set weight per exercise
+      responses:
+        "200":
+          description: Personal records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PersonalRecordItem"
+
+  /workouts/avg-weight-by-exercise:
+    get:
+      operationId: getAvgWeightByExercise
+      tags: [workouts]
+      summary: Get average weight by exercise over time
+      responses:
+        "200":
+          description: Average weight per exercise by date
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AvgWeightByExerciseDataPoint"
+
+  /workouts/avg-weight-by-muscle-group:
+    get:
+      operationId: getAvgWeightByMuscleGroup
+      tags: [workouts]
+      summary: Get average weight by muscle group over time
+      responses:
+        "200":
+          description: Average weight per muscle group by date
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AvgWeightByMuscleGroupDataPoint"
+
+  /workouts/personal-records-timeline:
+    get:
+      operationId: getPersonalRecordsTimeline
+      tags: [workouts]
+      summary: Get personal records timeline
+      description: Returns the most recent PR date and weight for each exercise
+      responses:
+        "200":
+          description: Personal records timeline
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PersonalRecordsTimelineItem"
+
+  /calorie-logs:
+    get:
+      operationId: getCalorieLogs
+      tags: [nutrition]
+      summary: Get all calorie log entries
+      responses:
+        "200":
+          description: Calorie log list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalorieLog"
+    post:
+      operationId: createCalorieLog
+      tags: [nutrition]
+      summary: Log or update calories for a date
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCalorieLogBody"
+      responses:
+        "201":
+          description: Created or updated calorie log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalorieLog"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /settings/calorie-daily-goal:
+    get:
+      operationId: getCalorieDailyGoal
+      tags: [settings]
+      summary: Get calorie daily goal
+      responses:
+        "200":
+          description: Calorie daily goal or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NullableIntGoal"
+    post:
+      operationId: setCalorieDailyGoal
+      tags: [settings]
+      summary: Set calorie daily goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntGoalBody"
+      responses:
+        "200":
+          description: Updated goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntGoal"
+
+  /settings/calorie-burn-goal:
+    get:
+      operationId: getCalorieBurnGoal
+      tags: [settings]
+      summary: Get calorie burn goal
+      responses:
+        "200":
+          description: Calorie burn goal or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NullableIntGoal"
+    post:
+      operationId: setCalorieBurnGoal
+      tags: [settings]
+      summary: Set calorie burn goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntGoalBody"
+      responses:
+        "200":
+          description: Updated goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntGoal"
+
+  /settings/widget-visibility:
+    get:
+      operationId: getWidgetVisibility
+      tags: [settings]
+      summary: Get widget visibility settings
+      responses:
+        "200":
+          description: Widget visibility map or null
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/WidgetVisibilityMap"
+                  - type: "null"
+    put:
+      operationId: setWidgetVisibility
+      tags: [settings]
+      summary: Save widget visibility settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WidgetVisibilityMap"
+      responses:
+        "200":
+          description: Saved widget visibility
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WidgetVisibilityMap"
+
+  /workouts/estimated-1rm:
+    get:
+      operationId: getEstimatedOneRm
+      tags: [workouts]
+      summary: Get estimated 1RM history per exercise
+      description: Returns max estimated one-rep max (Epley formula) per exercise per date, in lbs
+      responses:
+        "200":
+          description: Estimated 1RM history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EstimatedOneRmItem"
+
+  /workouts/last-session:
+    get:
+      operationId: getLastSession
+      tags: [workouts]
+      summary: Get last workout session
+      description: Returns aggregated exercises from the most recent workout date, suitable for pre-filling the log form. Returns null if no data.
+      responses:
+        "200":
+          description: Last session or null
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/LastSession"
+                  - type: "null"
+
+  /workouts/sessions:
+    get:
+      operationId: getWorkoutSessions
+      tags: [workouts]
+      summary: Get list of workout sessions
+      description: Returns all workout dates with their set counts, ordered newest first
+      responses:
+        "200":
+          description: Session list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkoutSession"
+
+  /workouts/sessions/{date}:
+    get:
+      operationId: getSessionSets
+      tags: [workouts]
+      summary: Get all sets for a session date
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Workout date (YYYY-MM-DD)
+      responses:
+        "200":
+          description: Individual sets for the session
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkoutSet"
+    delete:
+      operationId: deleteSession
+      tags: [workouts]
+      summary: Delete all sets for a session date
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+
+  /workouts/sessions/{date}/notes:
+    patch:
+      operationId: updateSessionNotes
+      tags: [workouts]
+      summary: Update notes for a session
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSessionNotesBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+
+  /workouts/sessions/{date}/comparison:
+    get:
+      operationId: getSessionComparison
+      tags: [workouts]
+      summary: Compare a session to the previous one
+      description: Returns per-exercise deltas vs. the previous chronological session
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Comparison data (empty array if no prior session)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionComparisonItem"
+
+  /workouts/export.csv:
+    get:
+      operationId: exportWorkoutsCsv
+      tags: [workouts]
+      summary: Export all workout data as CSV
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
+  /workouts/templates:
+    get:
+      operationId: getWorkoutTemplates
+      tags: [workouts]
+      summary: List all workout templates
+      responses:
+        "200":
+          description: Template list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkoutTemplateHeader"
+    post:
+      operationId: createWorkoutTemplate
+      tags: [workouts]
+      summary: Create a workout template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTemplateBody"
+      responses:
+        "201":
+          description: Created template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutTemplateFull"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /workouts/templates/{id}:
+    get:
+      operationId: getWorkoutTemplate
+      tags: [workouts]
+      summary: Get a workout template by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Template with exercises
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutTemplateFull"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteWorkoutTemplate
+      tags: [workouts]
+      summary: Delete a workout template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /workouts/sets/{id}:
+    patch:
+      operationId: updateWorkoutSet
+      tags: [workouts]
+      summary: Update an individual workout set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkoutSetBody"
+      responses:
+        "200":
+          description: Updated set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutSet"
+        "404":
+          description: Set not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteWorkoutSet
+      tags: [workouts]
+      summary: Delete an individual workout set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+        "404":
+          description: Set not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /body-metrics:
+    get:
+      operationId: getBodyMetrics
+      tags: [bodyMetrics]
+      summary: Get all body metric entries
+      description: Returns all body metric entries ordered by date ascending
+      responses:
+        "200":
+          description: Body metrics list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BodyMetric"
+    post:
+      operationId: createBodyMetric
+      tags: [bodyMetrics]
+      summary: Log a body metric entry
+      description: Insert or update a body metric entry for the given date
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBodyMetricBody"
+      responses:
+        "201":
+          description: Created body metric
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BodyMetric"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /settings/insights-date-range:
+    get:
+      operationId: getInsightsDateRange
+      tags: [settings]
+      summary: Get Insights date range preference
+      description: Returns the saved date range preset for the Insights tab, or null if not set
+      responses:
+        "200":
+          description: Saved date range or null
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/InsightsDateRange"
+                  - type: "null"
+    put:
+      operationId: setInsightsDateRange
+      tags: [settings]
+      summary: Save Insights date range preference
+      description: Persists the selected date range preset for the Insights tab
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InsightsDateRange"
+      responses:
+        "200":
+          description: Saved date range
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsightsDateRange"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /settings/weekly-sessions-goal:
+    get:
+      operationId: getWeeklySessionsGoal
+      tags: [settings]
+      summary: Get weekly sessions goal
+      description: Returns the target number of workout sessions per week, or null if not set
+      responses:
+        "200":
+          description: Weekly sessions goal or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NullableIntGoal"
+    post:
+      operationId: setWeeklySessionsGoal
+      tags: [settings]
+      summary: Set weekly sessions goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntGoalBody"
+      responses:
+        "200":
+          description: Saved goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntGoal"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    UploadResult:
+      type: object
+      properties:
+        inserted:
+          type: integer
+          description: Number of set rows inserted
+        skipped:
+          type: integer
+          description: Number of rows skipped (cardio, warmup, zero weight, etc.)
+        total:
+          type: integer
+          description: Total rows parsed
+        sessions:
+          type: integer
+          description: Number of unique workout dates imported
+        exercises:
+          type: integer
+          description: Number of unique exercise names imported
+      required:
+        - inserted
+        - skipped
+        - total
+        - sessions
+        - exercises
+
+    ExerciseDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Workout date (YYYY-MM-DD)
+        exercise:
+          type: string
+          description: Exercise name
+        totalKg:
+          type: number
+          description: Total weight lifted in kg for this exercise on this date
+      required:
+        - date
+        - exercise
+        - totalKg
+
+    MuscleGroupDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Workout date (YYYY-MM-DD)
+        muscleGroup:
+          type: string
+          description: Muscle group name
+        totalKg:
+          type: number
+          description: Total weight lifted in kg for this muscle group on this date
+      required:
+        - date
+        - muscleGroup
+        - totalKg
+
+    HeatmapDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Workout date (YYYY-MM-DD)
+        volumeKg:
+          type: number
+          description: Total volume lifted in kg on this date
+      required:
+        - date
+        - volumeKg
+
+    MostImprovedItem:
+      type: object
+      properties:
+        exercise:
+          type: string
+          description: Exercise name
+        firstDate:
+          type: string
+          description: Date of first recorded session (YYYY-MM-DD)
+        lastDate:
+          type: string
+          description: Date of most recent recorded session (YYYY-MM-DD)
+        firstAvgKg:
+          type: number
+          description: Average weight (kg) in the first session
+        lastAvgKg:
+          type: number
+          description: Average weight (kg) in the most recent session
+        pctGain:
+          type: number
+          description: Percentage gain from first to last session
+      required:
+        - exercise
+        - firstDate
+        - lastDate
+        - firstAvgKg
+        - lastAvgKg
+        - pctGain
+
+    BodyMetric:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+          description: Date (YYYY-MM-DD)
+        weightLbs:
+          type: ["number", "null"]
+          description: Body weight in lbs
+        waistInches:
+          type: ["number", "null"]
+          description: Waist measurement in inches
+      required:
+        - id
+        - date
+        - weightLbs
+        - waistInches
+
+    CreateBodyMetricBody:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Date (YYYY-MM-DD)
+        weightLbs:
+          type: ["number", "null"]
+          description: Body weight in lbs
+        waistInches:
+          type: ["number", "null"]
+          description: Waist measurement in inches
+      required:
+        - date
+
+    LogWorkoutExercise:
+      type: object
+      properties:
+        exercise:
+          type: string
+        weightLbs:
+          type: number
+        reps:
+          type: integer
+        sets:
+          type: integer
+      required:
+        - exercise
+        - weightLbs
+        - reps
+        - sets
+
+    LogWorkoutBody:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Workout date (YYYY-MM-DD)
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/LogWorkoutExercise"
+        notes:
+          type: ["string", "null"]
+          description: Optional session notes
+        bodyWeightLbs:
+          type: ["number", "null"]
+          description: Optional body weight to log alongside the workout
+      required:
+        - date
+        - exercises
+
+    LogWorkoutResponse:
+      type: object
+      properties:
+        inserted:
+          type: integer
+          description: Number of sets inserted
+        bodyWeightLogged:
+          type: boolean
+          description: Whether a body weight entry was also saved
+      required:
+        - inserted
+        - bodyWeightLogged
+
+    PersonalRecordItem:
+      type: object
+      properties:
+        exercise:
+          type: string
+          description: Exercise name
+        maxWeightKg:
+          type: number
+          description: All-time max single-set weight in kg
+      required:
+        - exercise
+        - maxWeightKg
+
+    AvgWeightByExerciseDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        exercise:
+          type: string
+        avgWeightKg:
+          type: number
+      required:
+        - date
+        - exercise
+        - avgWeightKg
+
+    AvgWeightByMuscleGroupDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        muscleGroup:
+          type: string
+        avgWeightKg:
+          type: number
+      required:
+        - date
+        - muscleGroup
+        - avgWeightKg
+
+    PersonalRecordsTimelineItem:
+      type: object
+      properties:
+        exercise:
+          type: string
+        maxWeightKg:
+          type: number
+        prDate:
+          type: string
+          description: Date of the personal record (YYYY-MM-DD)
+      required:
+        - exercise
+        - maxWeightKg
+        - prDate
+
+    CalorieLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+          description: Date (YYYY-MM-DD)
+        caloriesConsumed:
+          type: ["number", "null"]
+        caloriesBurned:
+          type: ["number", "null"]
+      required:
+        - id
+        - date
+        - caloriesConsumed
+        - caloriesBurned
+
+    CreateCalorieLogBody:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Date (YYYY-MM-DD)
+        caloriesConsumed:
+          type: ["number", "null"]
+        caloriesBurned:
+          type: ["number", "null"]
+      required:
+        - date
+
+    NullableIntGoal:
+      type: object
+      properties:
+        value:
+          type: ["integer", "null"]
+      required:
+        - value
+
+    IntGoal:
+      type: object
+      properties:
+        value:
+          type: integer
+      required:
+        - value
+
+    IntGoalBody:
+      type: object
+      properties:
+        value:
+          type: integer
+      required:
+        - value
+
+    WidgetVisibilityMap:
+      type: object
+      additionalProperties:
+        type: boolean
+
+    LastSessionExercise:
+      type: object
+      properties:
+        exercise:
+          type: string
+          description: Exercise name
+        weightLbs:
+          type: number
+          description: Average weight in lbs from last session
+        reps:
+          type: integer
+          description: Most common rep count from last session
+        sets:
+          type: integer
+          description: Number of sets performed in last session
+      required:
+        - exercise
+        - weightLbs
+        - reps
+        - sets
+
+    LastSession:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Date of the last session (YYYY-MM-DD)
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/LastSessionExercise"
+      required:
+        - date
+        - exercises
+
+    WorkoutSession:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Workout date (YYYY-MM-DD)
+        setCount:
+          type: integer
+          description: Total number of sets logged on this date
+      required:
+        - date
+        - setCount
+
+    WorkoutSet:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Set ID
+        date:
+          type: string
+          description: Workout date (YYYY-MM-DD)
+        exercise:
+          type: string
+          description: Exercise name
+        weightLbs:
+          type: number
+          description: Weight in lbs
+        reps:
+          type: integer
+          description: Number of reps
+        notes:
+          type: ["string", "null"]
+          description: Session notes (same value across all sets in a session)
+      required:
+        - id
+        - date
+        - exercise
+        - weightLbs
+        - reps
+        - notes
+
+    UpdateWorkoutSetBody:
+      type: object
+      properties:
+        exercise:
+          type: string
+        weightLbs:
+          type: number
+        reps:
+          type: integer
+        date:
+          type: string
+          description: Workout date (YYYY-MM-DD)
+      required:
+        - exercise
+        - weightLbs
+        - reps
+        - date
+
+    DeleteResult:
+      type: object
+      properties:
+        deleted:
+          type: integer
+          description: Number of sets deleted
+      required:
+        - deleted
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    InsightsDateRange:
+      type: object
+      properties:
+        preset:
+          type: ["string", "null"]
+          enum: ["4w", "3m", "6m", "1y", "custom", null]
+          description: Date range preset identifier, or null for "All time"
+        customStart:
+          type: string
+          description: Custom range start date (YYYY-MM-DD), used when preset is "custom"
+        customEnd:
+          type: string
+          description: Custom range end date (YYYY-MM-DD), used when preset is "custom"
+      required:
+        - preset
+        - customStart
+        - customEnd
+
+    EstimatedOneRmItem:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Workout date (YYYY-MM-DD)
+        exercise:
+          type: string
+          description: Exercise name
+        estimatedOneRmLbs:
+          type: number
+          description: Max estimated 1RM in lbs for this exercise on this date (Epley formula)
+      required:
+        - date
+        - exercise
+        - estimatedOneRmLbs
+
+    UpdateSessionNotesBody:
+      type: object
+      properties:
+        notes:
+          type: ["string", "null"]
+          description: Session notes (null to clear)
+      required:
+        - notes
+
+    SessionComparisonItem:
+      type: object
+      properties:
+        exercise:
+          type: string
+          description: Exercise name
+        avgWeightLbsDelta:
+          type: number
+          description: Change in average weight (lbs) vs previous session
+        avgRepsDelta:
+          type: number
+          description: Change in average reps vs previous session
+        prevDate:
+          type: string
+          description: Date of the prior session (YYYY-MM-DD)
+      required:
+        - exercise
+        - avgWeightLbsDelta
+        - avgRepsDelta
+        - prevDate
+
+    WorkoutTemplateHeader:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        createdAt:
+          type: string
+          description: ISO 8601 creation timestamp
+      required:
+        - id
+        - name
+        - createdAt
+
+    TemplateExercise:
+      type: object
+      properties:
+        id:
+          type: integer
+        exercise:
+          type: string
+        weightLbs:
+          type: number
+        reps:
+          type: integer
+        sets:
+          type: integer
+        order:
+          type: integer
+      required:
+        - id
+        - exercise
+        - weightLbs
+        - reps
+        - sets
+        - order
+
+    WorkoutTemplateFull:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        createdAt:
+          type: string
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateExercise"
+      required:
+        - id
+        - name
+        - createdAt
+        - exercises
+
+    CreateTemplateExercise:
+      type: object
+      properties:
+        exercise:
+          type: string
+        weightLbs:
+          type: number
+        reps:
+          type: integer
+        sets:
+          type: integer
+        order:
+          type: integer
+      required:
+        - exercise
+        - weightLbs
+        - reps
+        - sets
+
+    CreateTemplateBody:
+      type: object
+      properties:
+        name:
+          type: string
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateTemplateExercise"
+      required:
+        - name
+        - exercises
+
+    AuthRequestOtpBody:
+      type: object
+      properties:
+        email:
+          type: string
+      required:
+        - email
+
+    AuthVerifyOtpBody:
+      type: object
+      properties:
+        email:
+          type: string
+        code:
+          type: string
+        guestToken:
+          type: string
+      required:
+        - email
+        - code
+
+    AuthRequestOtpResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    AuthVerifyOtpResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/AuthUser"
+      required:
+        - token
+        - user
+
+    AuthUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: ["string", "null"]
+        isGuest:
+          type: boolean
+      required:
+        - id
+        - email
+        - isGuest
+        - customEnd
