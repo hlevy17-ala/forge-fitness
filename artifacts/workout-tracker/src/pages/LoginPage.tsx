@@ -1,11 +1,15 @@
 import { useState } from "react";
-import { useRequestOtp, useVerifyOtp } from "@workspace/api-client-react";
+import { useLocation } from "wouter";
+import { useRequestOtp, useVerifyOtp, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ForgeIcon } from "@/components/ForgeIcon";
 import { storeToken, getStoredToken } from "@/lib/auth";
 
 export default function LoginPage() {
+  const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<"email" | "otp">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -38,7 +42,8 @@ export default function LoginPage() {
       {
         onSuccess: (data) => {
           storeToken(data.token);
-          window.location.href = "/";
+          queryClient.setQueryData(getGetMeQueryKey(), data.user);
+          setLocation("/");
         },
         onError: () => setErrorMsg("Invalid or expired code. Please try again."),
       },
