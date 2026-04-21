@@ -98,7 +98,18 @@
       "Bash(npx cap *)",
       "Bash(open /Users/harrylevy/Downloads/Workout-Stats-Tracker-main/ios/App/App.xcodeproj)",
       "Bash(open /Users/harrylevy/Downloads/Workout-Stats-Tracker-main/artifacts/workout-tracker/ios/App/App.xcodeproj)",
-      "Bash(node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs add @capacitor/status-bar)"
+      "Bash(node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs add @capacitor/status-bar)",
+      "Bash(curl -s https://forge-fitness-production-37bc.up.railway.app/api/healthz)",
+      "Bash(curl -s https://forge-fitness-production-37bc.up.railway.app/)",
+      "Bash(curl -s \"https://forge-fitness-production-37bc.up.railway.app/assets/index-DHTa7nK6.js\")",
+      "Bash(convert --version)",
+      "Bash(python3 -c \"import cairosvg\")",
+      "Bash(brew list *)",
+      "Read(//private/tmp/**)",
+      "Bash(cat)",
+      "Bash(qlmanage -t -s 1024 -o /tmp/ /tmp/forge-icon.svg)",
+      "Read(//tmp/**)",
+      "Bash(sips -g pixelWidth -g pixelHeight /tmp/forge-icon.svg.png)"
     ]
   }
 }
