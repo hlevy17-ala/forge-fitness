@@ -530,9 +530,10 @@ export const getUploadWorkoutCsvUrl = () => {
   return `/api/workouts/upload`
 }
 
-export const uploadWorkoutCsv = async (uploadWorkoutCsvBody: UploadWorkoutCsvBody, options?: RequestInit): Promise<UploadResult> => {
+export const uploadWorkoutCsv = async (uploadWorkoutCsvBody: UploadWorkoutCsvBody & { mapping?: string }, options?: RequestInit): Promise<UploadResult> => {
     const formData = new FormData();
 formData.append(`file`, uploadWorkoutCsvBody.file);
+if (uploadWorkoutCsvBody.mapping) formData.append(`mapping`, uploadWorkoutCsvBody.mapping);
 
   return customFetch<UploadResult>(getUploadWorkoutCsvUrl(),
   {
