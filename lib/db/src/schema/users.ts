@@ -3,6 +3,7 @@ import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").unique(),
+  appleId: text("apple_id").unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
