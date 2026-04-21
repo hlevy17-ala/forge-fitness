@@ -85,7 +85,20 @@
       "Bash(docker --version)",
       "Bash(gh auth *)",
       "Bash(PORT=3000 BASE_PATH=/ node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs --filter workout-tracker build)",
-      "Bash(node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs --filter api-server build)"
+      "Bash(node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs --filter api-server build)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs add @capacitor/core @capacitor/ios @capacitor/cli)",
+      "Bash(xcode-select --print-path)",
+      "Bash(xcrun --sdk iphoneos --show-sdk-version)",
+      "Bash(sudo xcode-select *)",
+      "Bash(PORT=3000 BASE_PATH=/ node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs build)",
+      "Bash(npx cap *)",
+      "Bash(open /Users/harrylevy/Downloads/Workout-Stats-Tracker-main/ios/App/App.xcodeproj)",
+      "Bash(open /Users/harrylevy/Downloads/Workout-Stats-Tracker-main/artifacts/workout-tracker/ios/App/App.xcodeproj)",
+      "Bash(node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs add @capacitor/status-bar)"
     ]
   }
 }
