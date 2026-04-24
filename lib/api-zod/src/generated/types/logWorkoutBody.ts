@@ -21,4 +21,9 @@ export interface LogWorkoutBody {
      * @nullable
      */
   bodyWeightLbs?: number | null;
+  /**
+     * Optional workout duration in minutes for calorie calculation
+     * @nullable
+     */
+  durationMinutes?: number | null;
 }

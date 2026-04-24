@@ -11,4 +11,9 @@ export interface LogWorkoutResponse {
   inserted: number;
   /** Whether a body weight entry was also saved */
   bodyWeightLogged: boolean;
+  /**
+   * Estimated calories burned, if duration was provided
+   * @nullable
+   */
+  caloriesBurned: number | null;
 }

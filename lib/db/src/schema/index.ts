@@ -6,3 +6,4 @@ export * from "./bodyMetrics";
 export * from "./calorieLogs";
 export * from "./userSettings";
 export * from "./workoutTemplates";
+export * from "./workoutSessions";

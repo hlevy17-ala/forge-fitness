@@ -53,3 +53,5 @@ export * from './workoutSession';
 export * from './workoutSet';
 export * from './workoutTemplateFull';
 export * from './workoutTemplateHeader';
+export * from './workoutSuggestion';
+export * from './workoutSessionCalories';

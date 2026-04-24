@@ -114,6 +114,11 @@ export interface LogWorkoutBody {
      * @nullable
      */
   bodyWeightLbs?: number | null;
+  /**
+     * Optional workout duration in minutes for calorie calculation
+     * @nullable
+     */
+  durationMinutes?: number | null;
 }
 
 export interface LogWorkoutResponse {
@@ -121,6 +126,31 @@ export interface LogWorkoutResponse {
   inserted: number;
   /** Whether a body weight entry was also saved */
   bodyWeightLogged: boolean;
+  /**
+   * Estimated calories burned, if duration was provided
+   * @nullable
+   */
+  caloriesBurned: number | null;
+}
+
+export interface WorkoutSuggestion {
+  /** Exercise name */
+  exercise: string;
+  /** Suggested weight in lbs for next session */
+  suggestedWeightLbs: number;
+  /** Current (last session) average weight in lbs */
+  currentWeightLbs: number;
+  /** Reason for the suggestion */
+  reason: string;
+}
+
+export interface WorkoutSessionCalories {
+  /** Workout date (YYYY-MM-DD) */
+  date: string;
+  /** @nullable */
+  durationMinutes: number | null;
+  /** @nullable */
+  caloriesBurned: number | null;
 }
 
 export interface PersonalRecordItem {

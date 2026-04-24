@@ -20,6 +20,7 @@ import {
   useGetWorkoutTemplates,
   useGetWorkoutTemplate,
   useCreateWorkoutTemplate,
+  useGetWorkoutSuggestions,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ExerciseHistorySheet } from "./ExerciseHistorySheet";
@@ -60,7 +61,9 @@ export function LogWorkoutModal({ open, onClose }: Props) {
   const [rows, setRows] = useState<ExerciseRow[]>([mkRow()]);
   const [notes, setNotes] = useState("");
   const [bodyWeightLbs, setBodyWeightLbs] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("");
   const [savedCount, setSavedCount] = useState<number | null>(null);
+  const [savedCalories, setSavedCalories] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
@@ -77,6 +80,7 @@ export function LogWorkoutModal({ open, onClose }: Props) {
   const { data: selectedTemplate } = useGetWorkoutTemplate(selectedTemplateId ?? 0, {
     query: { enabled: !!selectedTemplateId },
   });
+  const { data: suggestions = [] } = useGetWorkoutSuggestions({ query: { enabled: open } });
   const mutation = useLogWorkout();
   const createTemplateMutation = useCreateWorkoutTemplate();
 
@@ -108,11 +112,30 @@ export function LogWorkoutModal({ open, onClose }: Props) {
     return map;
   }, [estimatedOneRm]);
 
+  const suggestionMap = useMemo(() => {
+    const map = new Map<string, { suggestedWeightLbs: number; currentWeightLbs: number; reason: string }>();
+    for (const s of suggestions) {
+      map.set(s.exercise.toLowerCase(), { suggestedWeightLbs: s.suggestedWeightLbs, currentWeightLbs: s.currentWeightLbs, reason: s.reason });
+    }
+    return map;
+  }, [suggestions]);
+
   const addRow = () => setRows((r) => [...r, mkRow()]);
   const removeRow = (id: number) =>
     setRows((r) => (r.length > 1 ? r.filter((x) => x.id !== id) : r));
   const updateRow = (id: number, key: keyof ExerciseRow, value: string) =>
-    setRows((r) => r.map((x) => (x.id === id ? { ...x, [key]: value } : x)));
+    setRows((r) => r.map((x) => {
+      if (x.id !== id) return x;
+      const updated = { ...x, [key]: value };
+      // Auto-fill weight from suggestion when exercise is set and weight is empty
+      if (key === "exercise" && !x.weightLbs) {
+        const suggestion = suggestionMap.get(value.toLowerCase().trim());
+        if (suggestion) {
+          updated.weightLbs = String(suggestion.suggestedWeightLbs);
+        }
+      }
+      return updated;
+    }));
 
   const validRows = rows.filter(isRowValid);
   const canSave = validRows.length > 0 && !mutation.isPending;
@@ -133,11 +156,13 @@ export function LogWorkoutModal({ open, onClose }: Props) {
           })),
           notes: notes.trim() || null,
           bodyWeightLbs: bodyWeightLbs ? parseFloat(bodyWeightLbs) : null,
+          durationMinutes: durationMinutes ? parseInt(durationMinutes, 10) : null,
         },
       },
       {
         onSuccess: (result) => {
           setSavedCount(result.inserted);
+          setSavedCalories(result.caloriesBurned ?? null);
           queryClient.invalidateQueries({
             predicate: (q) =>
               typeof q.queryKey[0] === "string" &&
@@ -200,7 +225,9 @@ export function LogWorkoutModal({ open, onClose }: Props) {
     setRows([mkRow()]);
     setNotes("");
     setBodyWeightLbs("");
+    setDurationMinutes("");
     setSavedCount(null);
+    setSavedCalories(null);
     setErrorMsg(null);
     setSavingTemplate(false);
     setTemplateName("");
@@ -245,6 +272,11 @@ export function LogWorkoutModal({ open, onClose }: Props) {
               <p className="text-muted-foreground text-sm mt-1">
                 {savedCount} set{savedCount !== 1 ? "s" : ""} logged for {date}. Charts updated.
               </p>
+              {savedCalories !== null && (
+                <p className="text-orange-400 text-sm mt-2 font-medium">
+                  🔥 ~{savedCalories} calories burned
+                </p>
+              )}
             </div>
             <Button onClick={handleClose} className="mt-2 bg-primary hover:bg-primary/90 text-primary-foreground">
               Done
@@ -341,6 +373,7 @@ export function LogWorkoutModal({ open, onClose }: Props) {
                 const weightDelta = lastEx && !isNaN(enteredWeight) && enteredWeight > 0
                   ? Math.round((enteredWeight - lastEx.weightLbs) * 10) / 10
                   : null;
+                const suggestion = exKey.length > 0 ? suggestionMap.get(exKey) : undefined;
 
                 return (
                   <div key={row.id} className="space-y-1">
@@ -431,6 +464,25 @@ export function LogWorkoutModal({ open, onClose }: Props) {
                         )}
                       </div>
                     )}
+                    {suggestion && (
+                      <div className="px-1 text-xs">
+                        {suggestion.reason === "Ready to increase" && (
+                          <span className="inline-flex items-center gap-1 text-green-500 font-medium">
+                            💡 +{Math.round((suggestion.suggestedWeightLbs - suggestion.currentWeightLbs) * 10) / 10} lbs suggested
+                          </span>
+                        )}
+                        {suggestion.reason === "Too heavy" && (
+                          <span className="inline-flex items-center gap-1 text-yellow-500 font-medium">
+                            ⬇ -{Math.round((suggestion.currentWeightLbs - suggestion.suggestedWeightLbs) * 10) / 10} lbs suggested
+                          </span>
+                        )}
+                        {suggestion.reason === "Keep going" && (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground">
+                            ✓ Hold — keep current weight
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -457,6 +509,18 @@ export function LogWorkoutModal({ open, onClose }: Props) {
                   value={bodyWeightLbs}
                   onChange={(e) => setBodyWeightLbs(e.target.value)}
                   placeholder="175"
+                  className="bg-background border-border text-foreground"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Duration (min) <span className="text-muted-foreground font-normal">optional</span></Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(e.target.value)}
+                  placeholder="45"
                   className="bg-background border-border text-foreground"
                 />
               </div>

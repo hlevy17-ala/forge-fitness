@@ -59,7 +59,9 @@ import type {
   UploadWorkoutCsvBody,
   WidgetVisibilityMap,
   WorkoutSession,
+  WorkoutSessionCalories,
   WorkoutSet,
+  WorkoutSuggestion,
   WorkoutTemplateFull,
   WorkoutTemplateHeader
 } from './api.schemas';
@@ -3470,4 +3472,88 @@ export const useSetWeeklySessionsGoal = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getSetWeeklySessionsGoalMutationOptions(options));
     }
+
+/**
+ * @summary Get progressive overload suggestions for all exercises
+ */
+export const getGetWorkoutSuggestionsUrl = () => {
+  return `/api/workouts/suggestions`
+}
+
+export const getWorkoutSuggestions = async ( options?: SecondParameter<typeof customFetch>): Promise<WorkoutSuggestion[]> => {
+  return customFetch<WorkoutSuggestion[]>(getGetWorkoutSuggestionsUrl(), {
+    ...options,
+    method: 'GET'
+  });
+}
+
+export const getGetWorkoutSuggestionsQueryKey = () => {
+  return [
+    `/api/workouts/suggestions`
+  ] as const;
+}
+
+export const getGetWorkoutSuggestionsQueryOptions = <TData = Awaited<ReturnType<typeof getWorkoutSuggestions>>, TError = ErrorType<unknown>>(options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkoutSuggestions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+  const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetWorkoutSuggestionsQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getWorkoutSuggestions>>> = ({ signal }) => getWorkoutSuggestions({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWorkoutSuggestions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWorkoutSuggestionsQueryResult = NonNullable<Awaited<ReturnType<typeof getWorkoutSuggestions>>>
+export type GetWorkoutSuggestionsQueryError = ErrorType<unknown>
+
+/**
+ * @summary Get progressive overload suggestions for all exercises
+ */
+export function useGetWorkoutSuggestions<TData = Awaited<ReturnType<typeof getWorkoutSuggestions>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkoutSuggestions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetWorkoutSuggestionsQueryOptions(options)
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get sessions with calorie data
+ */
+export const getGetWorkoutSessionsCaloriesUrl = () => {
+  return `/api/workouts/sessions-calories`
+}
+
+export const getWorkoutSessionsCalories = async ( options?: SecondParameter<typeof customFetch>): Promise<WorkoutSessionCalories[]> => {
+  return customFetch<WorkoutSessionCalories[]>(getGetWorkoutSessionsCaloriesUrl(), {
+    ...options,
+    method: 'GET'
+  });
+}
+
+export const getGetWorkoutSessionsCaloriesQueryKey = () => {
+  return [
+    `/api/workouts/sessions-calories`
+  ] as const;
+}
+
+export const getGetWorkoutSessionsCaloriesQueryOptions = <TData = Awaited<ReturnType<typeof getWorkoutSessionsCalories>>, TError = ErrorType<unknown>>(options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkoutSessionsCalories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+  const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetWorkoutSessionsCaloriesQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getWorkoutSessionsCalories>>> = ({ signal }) => getWorkoutSessionsCalories({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWorkoutSessionsCalories>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWorkoutSessionsCaloriesQueryResult = NonNullable<Awaited<ReturnType<typeof getWorkoutSessionsCalories>>>
+export type GetWorkoutSessionsCaloriesQueryError = ErrorType<unknown>
+
+/**
+ * @summary Get sessions with calorie data
+ */
+export function useGetWorkoutSessionsCalories<TData = Awaited<ReturnType<typeof getWorkoutSessionsCalories>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkoutSessionsCalories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetWorkoutSessionsCaloriesQueryOptions(options)
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 

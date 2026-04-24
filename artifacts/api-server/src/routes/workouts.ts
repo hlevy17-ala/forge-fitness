@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
-import { sql, eq, asc, and, isNull } from "drizzle-orm";
-import { db, workoutSetsTable, workoutTemplatesTable, templateExercisesTable, bodyMetricsTable } from "@workspace/db";
+import { sql, eq, asc, and, desc } from "drizzle-orm";
+import { db, workoutSetsTable, workoutTemplatesTable, templateExercisesTable, bodyMetricsTable, workoutSessionsTable } from "@workspace/db";
 import {
   UploadWorkoutCsvResponse,
   GetWorkoutsByExerciseResponse,
@@ -29,6 +29,8 @@ import {
   CreateWorkoutTemplateBody,
   GetWorkoutTemplateResponse,
   DeleteWorkoutTemplateResponse,
+  GetWorkoutSuggestionsResponse,
+  GetWorkoutSessionsCaloriesResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -198,7 +200,7 @@ router.post("/workouts/log", async (req, res): Promise<void> => {
     return;
   }
 
-  const { date, exercises, notes, bodyWeightLbs } = parsed.data;
+  const { date, exercises, notes, bodyWeightLbs, durationMinutes } = parsed.data;
   const userId = req.userId!;
 
   const toInsert = exercises.flatMap((ex) =>
@@ -219,6 +221,8 @@ router.post("/workouts/log", async (req, res): Promise<void> => {
   }
 
   let bodyWeightLogged = false;
+  let caloriesBurned: number | null = null;
+
   await db.transaction(async (tx) => {
     const CHUNK_SIZE = 1000;
     for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
@@ -234,10 +238,48 @@ router.post("/workouts/log", async (req, res): Promise<void> => {
         });
       bodyWeightLogged = true;
     }
+
+    if (durationMinutes != null && durationMinutes > 0) {
+      // Get latest bodyweight for calorie calculation
+      const latestMetric = await tx
+        .select({ weightLbs: bodyMetricsTable.weightLbs })
+        .from(bodyMetricsTable)
+        .where(eq(bodyMetricsTable.userId, userId))
+        .orderBy(desc(bodyMetricsTable.date))
+        .limit(1);
+
+      // Use provided bodyweight if available, fallback to stored
+      const weightForCalc = bodyWeightLbs != null
+        ? bodyWeightLbs / KG_TO_LBS
+        : latestMetric.length > 0 && latestMetric[0].weightLbs != null
+          ? Number(latestMetric[0].weightLbs) / KG_TO_LBS
+          : null;
+
+      if (weightForCalc != null) {
+        const MET = 5.0;
+        caloriesBurned = Math.round(MET * weightForCalc * (durationMinutes / 60) * 10) / 10;
+      }
+
+      await tx
+        .insert(workoutSessionsTable)
+        .values({
+          userId,
+          date,
+          durationMinutes,
+          caloriesBurned: caloriesBurned != null ? caloriesBurned.toFixed(2) : null,
+        })
+        .onConflictDoUpdate({
+          target: [workoutSessionsTable.userId, workoutSessionsTable.date],
+          set: {
+            durationMinutes,
+            caloriesBurned: caloriesBurned != null ? caloriesBurned.toFixed(2) : null,
+          },
+        });
+    }
   });
 
-  req.log.info({ inserted: toInsert.length, date }, "Manual workout log saved");
-  res.json(LogWorkoutResponse.parse({ inserted: toInsert.length, bodyWeightLogged }));
+  req.log.info({ inserted: toInsert.length, date, caloriesBurned }, "Manual workout log saved");
+  res.json(LogWorkoutResponse.parse({ inserted: toInsert.length, bodyWeightLogged, caloriesBurned }));
 });
 
 router.get("/workouts/by-exercise", async (req, res): Promise<void> => {
@@ -844,6 +886,87 @@ router.get("/workouts/personal-records-timeline", async (req, res): Promise<void
     .sort((a, b) => b.prDate.localeCompare(a.prDate));
 
   res.json(GetPersonalRecordsTimelineResponse.parse(result));
+});
+
+router.get("/workouts/suggestions", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+
+  // Get the last 3 distinct session dates per exercise
+  const { rows } = await db.execute<{ exercise: string; date: string; avg_reps: number; avg_weight_kg: number }>(sql`
+    SELECT exercise, date,
+      CAST(AVG(reps) AS float8) AS avg_reps,
+      CAST(AVG(weight_kg::numeric) AS float8) AS avg_weight_kg
+    FROM workout_sets
+    WHERE user_id = ${userId}
+    GROUP BY exercise, date
+    ORDER BY exercise, date DESC
+  `);
+
+  // Group by exercise, keep last 3 sessions
+  const byExercise = new Map<string, { date: string; avgReps: number; avgWeightKg: number }[]>();
+  for (const row of rows) {
+    if (!byExercise.has(row.exercise)) byExercise.set(row.exercise, []);
+    const sessions = byExercise.get(row.exercise)!;
+    if (sessions.length < 3) {
+      sessions.push({ date: row.date, avgReps: Number(row.avg_reps), avgWeightKg: Number(row.avg_weight_kg) });
+    }
+  }
+
+  const suggestions: { exercise: string; suggestedWeightLbs: number; currentWeightLbs: number; reason: string }[] = [];
+
+  for (const [exercise, sessions] of byExercise) {
+    if (sessions.length === 0) continue;
+    const lastSession = sessions[0]; // already ordered DESC so first is most recent
+    const lastAvgReps = lastSession.avgReps;
+    const lastAvgWeightKg = lastSession.avgWeightKg;
+    const currentWeightLbs = Math.round(lastAvgWeightKg * KG_TO_LBS * 10) / 10;
+
+    let suggestedWeightLbs: number;
+    let reason: string;
+
+    if (lastAvgReps >= 12) {
+      // Ready to increase — bump 5%, round to nearest 2.5 lbs
+      const rawIncrease = currentWeightLbs * 1.05;
+      suggestedWeightLbs = Math.round(rawIncrease / 2.5) * 2.5;
+      reason = "Ready to increase";
+    } else if (lastAvgReps < 8) {
+      // Too heavy — drop 5%, round to nearest 2.5 lbs
+      const rawDecrease = currentWeightLbs * 0.95;
+      suggestedWeightLbs = Math.round(rawDecrease / 2.5) * 2.5;
+      reason = "Too heavy";
+    } else {
+      // Keep going
+      suggestedWeightLbs = Math.round(currentWeightLbs / 2.5) * 2.5;
+      if (suggestedWeightLbs === 0) suggestedWeightLbs = currentWeightLbs;
+      reason = "Keep going";
+    }
+
+    suggestions.push({ exercise, suggestedWeightLbs, currentWeightLbs, reason });
+  }
+
+  suggestions.sort((a, b) => a.exercise.localeCompare(b.exercise));
+  res.json(GetWorkoutSuggestionsResponse.parse(suggestions));
+});
+
+router.get("/workouts/sessions-calories", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const rows = await db
+    .select({
+      date: workoutSessionsTable.date,
+      durationMinutes: workoutSessionsTable.durationMinutes,
+      caloriesBurned: workoutSessionsTable.caloriesBurned,
+    })
+    .from(workoutSessionsTable)
+    .where(eq(workoutSessionsTable.userId, userId))
+    .orderBy(desc(workoutSessionsTable.date));
+
+  const result = rows.map((r) => ({
+    date: r.date,
+    durationMinutes: r.durationMinutes ?? null,
+    caloriesBurned: r.caloriesBurned != null ? Number(r.caloriesBurned) : null,
+  }));
+
+  res.json(GetWorkoutSessionsCaloriesResponse.parse(result));
 });
 
 export default router;

@@ -186,13 +186,30 @@ export const LogWorkoutBody = zod.object({
   "sets": zod.number()
 })),
   "notes": zod.string().nullish().describe('Optional session notes'),
-  "bodyWeightLbs": zod.number().nullish().describe('Optional body weight to log alongside the workout')
+  "bodyWeightLbs": zod.number().nullish().describe('Optional body weight to log alongside the workout'),
+  "durationMinutes": zod.number().int().positive().nullish().describe('Optional workout duration in minutes for calorie calculation')
 })
 
 export const LogWorkoutResponse = zod.object({
   "inserted": zod.number().describe('Number of sets inserted'),
-  "bodyWeightLogged": zod.boolean().describe('Whether a body weight entry was also saved')
+  "bodyWeightLogged": zod.boolean().describe('Whether a body weight entry was also saved'),
+  "caloriesBurned": zod.number().nullable().describe('Estimated calories burned, if duration was provided')
 })
+
+export const GetWorkoutSuggestionsResponseItem = zod.object({
+  "exercise": zod.string().describe('Exercise name'),
+  "suggestedWeightLbs": zod.number().describe('Suggested weight in lbs for next session'),
+  "currentWeightLbs": zod.number().describe('Current (last session) average weight in lbs'),
+  "reason": zod.string().describe('Reason for the suggestion')
+})
+export const GetWorkoutSuggestionsResponse = zod.array(GetWorkoutSuggestionsResponseItem)
+
+export const GetWorkoutSessionsCaloriesResponseItem = zod.object({
+  "date": zod.string().describe('Workout date (YYYY-MM-DD)'),
+  "durationMinutes": zod.number().nullable(),
+  "caloriesBurned": zod.number().nullable()
+})
+export const GetWorkoutSessionsCaloriesResponse = zod.array(GetWorkoutSessionsCaloriesResponseItem)
 
 
 /**
