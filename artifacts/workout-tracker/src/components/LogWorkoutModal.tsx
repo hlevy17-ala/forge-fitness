@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { saveWorkoutToHealthKit } from "@/lib/healthkit";
 import { Plus, Trash2, CheckCircle2, Loader2, RotateCcw, Trophy, BookmarkPlus, ChevronDown, BarChart2 } from "lucide-react";
 import {
   Dialog,
@@ -163,6 +164,16 @@ export function LogWorkoutModal({ open, onClose }: Props) {
         onSuccess: (result) => {
           setSavedCount(result.inserted);
           setSavedCalories(result.caloriesBurned ?? null);
+          // Sync to Apple Health if calories available
+          if (result.caloriesBurned && durationMinutes) {
+            const endTime = new Date();
+            const startTime = new Date(endTime.getTime() - parseInt(durationMinutes, 10) * 60 * 1000);
+            saveWorkoutToHealthKit({
+              startDate: startTime,
+              endDate: endTime,
+              calories: result.caloriesBurned,
+            }).catch(console.error);
+          }
           queryClient.invalidateQueries({
             predicate: (q) =>
               typeof q.queryKey[0] === "string" &&

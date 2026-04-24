@@ -49,5 +49,9 @@
 	<true/>
 	<key>UIStatusBarStyle</key>
 	<string>UIStatusBarStyleLightContent</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Forge reads health data to enhance your fitness tracking.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Forge saves your workouts and calories to Apple Health.</string>
 </dict>
 </plist>
