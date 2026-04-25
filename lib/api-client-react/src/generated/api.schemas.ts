@@ -249,8 +249,14 @@ export interface LastSession {
 export interface WorkoutSession {
   /** Workout date (YYYY-MM-DD) */
   date: string;
-  /** Total number of sets logged on this date */
+  /** Total number of sets logged on this date (0 for cardio) */
   setCount: number;
+  type: 'strength' | 'cardio';
+  cardioType?: string | null;
+  cardioDurationMinutes?: number | null;
+  cardioDistanceMiles?: number | null;
+  cardioInclinePercent?: number | null;
+  cardioCaloriesBurned?: number | null;
 }
 
 export interface WorkoutSet {

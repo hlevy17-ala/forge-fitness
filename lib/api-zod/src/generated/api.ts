@@ -385,7 +385,13 @@ export const GetLastSessionResponse = zod.union([zod.object({
  */
 export const GetWorkoutSessionsResponseItem = zod.object({
   "date": zod.string().describe('Workout date (YYYY-MM-DD)'),
-  "setCount": zod.number().describe('Total number of sets logged on this date')
+  "setCount": zod.number().describe('Total number of sets logged on this date (0 for cardio)'),
+  "type": zod.enum(["strength", "cardio"]).describe('Session type'),
+  "cardioType": zod.string().nullable().optional(),
+  "cardioDurationMinutes": zod.number().nullable().optional(),
+  "cardioDistanceMiles": zod.number().nullable().optional(),
+  "cardioInclinePercent": zod.number().nullable().optional(),
+  "cardioCaloriesBurned": zod.number().nullable().optional(),
 })
 export const GetWorkoutSessionsResponse = zod.array(GetWorkoutSessionsResponseItem)
 

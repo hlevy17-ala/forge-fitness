@@ -198,6 +198,8 @@ export function SessionHistoryModal({ open, onClose }: Props) {
 
   const currentNotes = sets[0]?.notes ?? null;
   const comparisonMap = new Map(comparison.map((c) => [c.exercise, c]));
+  const currentSession = sessions.find((s) => s.date === sessionDate);
+  const isCardioSession = currentSession?.type === "cardio";
 
   const groupedSets = sets.reduce<Record<string, typeof sets>>((acc, s) => {
     (acc[s.exercise] ??= []).push(s);
@@ -253,17 +255,46 @@ export function SessionHistoryModal({ open, onClose }: Props) {
               <div className="space-y-1">
                 {sessions.map((s) => (
                   <button
-                    key={s.date}
+                    key={`${s.date}-${s.type}`}
                     type="button"
                     onClick={() => setView({ kind: "session", date: s.date })}
                     className="w-full flex items-center justify-between px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left"
                   >
-                    <span className="font-medium text-sm">{fmt(s.date)}</span>
-                    <span className="text-xs text-muted-foreground">{s.setCount} sets</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{fmt(s.date)}</span>
+                      {s.type === "cardio" && (
+                        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium capitalize">
+                          {s.cardioType?.replace("_", " ") ?? "Cardio"}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {s.type === "cardio"
+                        ? `${s.cardioDurationMinutes} min${s.cardioDistanceMiles ? ` · ${s.cardioDistanceMiles} mi` : ""}`
+                        : `${s.setCount} sets`}
+                    </span>
                   </button>
                 ))}
               </div>
             )
+          ) : isCardioSession ? (
+            <div className="space-y-4 px-1 py-2">
+              <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+                <p className="text-sm font-semibold capitalize">{currentSession?.cardioType?.replace("_", " ")}</p>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><p className="text-muted-foreground text-xs">Duration</p><p className="font-medium">{currentSession?.cardioDurationMinutes} min</p></div>
+                  {currentSession?.cardioDistanceMiles != null && (
+                    <div><p className="text-muted-foreground text-xs">Distance</p><p className="font-medium">{currentSession.cardioDistanceMiles} mi</p></div>
+                  )}
+                  {currentSession?.cardioInclinePercent != null && (
+                    <div><p className="text-muted-foreground text-xs">Incline</p><p className="font-medium">{currentSession.cardioInclinePercent}%</p></div>
+                  )}
+                  {currentSession?.cardioCaloriesBurned != null && (
+                    <div><p className="text-muted-foreground text-xs">Calories</p><p className="font-medium text-orange-400">🔥 {currentSession.cardioCaloriesBurned}</p></div>
+                  )}
+                </div>
+              </div>
+            </div>
           ) : setsLoading ? (
             <div className="flex justify-center py-10">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />

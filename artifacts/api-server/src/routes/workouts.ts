@@ -581,14 +581,43 @@ router.get("/workouts/last-session", async (req, res): Promise<void> => {
 
 router.get("/workouts/sessions", async (req, res): Promise<void> => {
   const userId = req.userId!;
-  const { rows } = await db.execute<{ date: string; set_count: number }>(sql`
+
+  const { rows: strengthRows } = await db.execute<{ date: string; set_count: number }>(sql`
     SELECT date, COUNT(*) AS set_count
     FROM workout_sets
     WHERE user_id = ${userId}
     GROUP BY date
-    ORDER BY date DESC
   `);
-  res.json(GetWorkoutSessionsResponse.parse(rows.map((r) => ({ date: r.date, setCount: Number(r.set_count) }))));
+
+  const cardioRows = await db
+    .select()
+    .from(cardioSessionsTable)
+    .where(eq(cardioSessionsTable.userId, userId));
+
+  const strengthSessions = strengthRows.map((r) => ({
+    date: r.date,
+    setCount: Number(r.set_count),
+    type: "strength" as const,
+    cardioType: null,
+    cardioDurationMinutes: null,
+    cardioDistanceMiles: null,
+    cardioInclinePercent: null,
+    cardioCaloriesBurned: null,
+  }));
+
+  const cardioSessions = cardioRows.map((r) => ({
+    date: r.date,
+    setCount: 0,
+    type: "cardio" as const,
+    cardioType: r.exerciseType,
+    cardioDurationMinutes: r.durationMinutes,
+    cardioDistanceMiles: r.distanceMiles != null ? Number(r.distanceMiles) : null,
+    cardioInclinePercent: r.inclinePercent != null ? Number(r.inclinePercent) : null,
+    cardioCaloriesBurned: r.caloriesBurned != null ? Number(r.caloriesBurned) : null,
+  }));
+
+  const all = [...strengthSessions, ...cardioSessions].sort((a, b) => b.date.localeCompare(a.date));
+  res.json(GetWorkoutSessionsResponse.parse(all));
 });
 
 router.get("/workouts/sessions/:date", async (req, res): Promise<void> => {
