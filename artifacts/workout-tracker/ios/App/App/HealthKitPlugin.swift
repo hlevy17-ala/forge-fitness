@@ -47,6 +47,7 @@ public class HealthKitPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         guard let startDate = formatter.date(from: startIso),
               let endDate = formatter.date(from: endIso) else {
             call.reject("Invalid date format — use ISO 8601")
