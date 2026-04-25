@@ -196,6 +196,25 @@ export const LogWorkoutResponse = zod.object({
   "caloriesBurned": zod.number().nullable().describe('Estimated calories burned, if duration was provided')
 })
 
+export const CardioExerciseType = zod.enum(["treadmill", "outdoor_run", "bike", "elliptical"])
+export type CardioExerciseType = zod.infer<typeof CardioExerciseType>
+
+export const LogCardioBody = zod.object({
+  "date": zod.string().describe('Workout date (YYYY-MM-DD)'),
+  "exerciseType": CardioExerciseType,
+  "durationMinutes": zod.number().int().positive(),
+  "distanceMiles": zod.number().positive().nullish(),
+  "inclinePercent": zod.number().min(0).max(30).nullish(),
+  "bodyWeightLbs": zod.number().positive().nullish(),
+  "notes": zod.string().nullish(),
+})
+export type LogCardioBody = zod.infer<typeof LogCardioBody>
+
+export const LogCardioResponse = zod.object({
+  "caloriesBurned": zod.number().nullable(),
+})
+export type LogCardioResponse = zod.infer<typeof LogCardioResponse>
+
 export const GetWorkoutSuggestionsResponseItem = zod.object({
   "exercise": zod.string().describe('Exercise name'),
   "suggestedWeightLbs": zod.number().describe('Suggested weight in lbs for next session'),

@@ -113,7 +113,11 @@
       "Bash(node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs add @capacitor-community/apple-sign-in)",
       "Bash(node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs add jose)",
       "Bash(DATABASE_URL=\"postgresql://postgres:xQuuvpOMAoHwWKRREpUaqvBjnPSxjqko@roundhouse.proxy.rlwy.net:36085/railway\" node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs push)",
-      "Bash(DATABASE_URL=\"postgresql://postgres:xQuuvpOMAoHwWKRREpUaqvBjnPSxjqko@roundhouse.proxy.rlwy.net:36085/railway\" node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs push-force)"
+      "Bash(DATABASE_URL=\"postgresql://postgres:xQuuvpOMAoHwWKRREpUaqvBjnPSxjqko@roundhouse.proxy.rlwy.net:36085/railway\" node /usr/local/Cellar/node/25.9.0_2/lib/node_modules/pnpm/bin/pnpm.cjs push-force)",
+      "Bash(/usr/local/Cellar/node/25.9.0_2/bin/pnpm install *)",
+      "Bash(/usr/local/Cellar/node/25.9.0_2/bin/pnpm typecheck *)",
+      "Bash(/usr/local/Cellar/node/25.9.0_2/bin/pnpm --filter @workspace/api-client-react build)",
+      "Bash(npx tsc *)"
     ]
   }
 }

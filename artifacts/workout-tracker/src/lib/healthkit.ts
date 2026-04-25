@@ -6,6 +6,7 @@ interface HealthKitPlugin {
     startDate: string;
     endDate: string;
     calories: number;
+    activityType?: string;
   }): Promise<{ saved: boolean }>;
 }
 
@@ -25,6 +26,7 @@ export async function saveWorkoutToHealthKit(opts: {
   startDate: Date;
   endDate: Date;
   calories: number;
+  activityType?: string;
 }): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
   try {
@@ -32,6 +34,7 @@ export async function saveWorkoutToHealthKit(opts: {
       startDate: opts.startDate.toISOString(),
       endDate: opts.endDate.toISOString(),
       calories: opts.calories,
+      activityType: opts.activityType,
     });
     return result.saved;
   } catch (e) {

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { saveWorkoutToHealthKit } from "@/lib/healthkit";
-import { Plus, Trash2, CheckCircle2, Loader2, RotateCcw, Trophy, BookmarkPlus, ChevronDown, BarChart2 } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, Loader2, RotateCcw, Trophy, BookmarkPlus, ChevronDown, BarChart2, Dumbbell, Heart } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useLogWorkout,
+  useLogCardio,
   useGetExerciseList,
   useGetLastSession,
   useGetPersonalRecords,
@@ -23,6 +24,7 @@ import {
   useCreateWorkoutTemplate,
   useGetWorkoutSuggestions,
 } from "@workspace/api-client-react";
+import type { CardioExerciseType } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ExerciseHistorySheet } from "./ExerciseHistorySheet";
 
@@ -57,7 +59,15 @@ interface Props {
   onClose: () => void;
 }
 
+const CARDIO_TYPES: { value: CardioExerciseType; label: string }[] = [
+  { value: "treadmill", label: "Treadmill" },
+  { value: "outdoor_run", label: "Outdoor Run" },
+  { value: "bike", label: "Bike" },
+  { value: "elliptical", label: "Elliptical" },
+];
+
 export function LogWorkoutModal({ open, onClose }: Props) {
+  const [mode, setMode] = useState<"strength" | "cardio">("strength");
   const [date, setDate] = useState(todayIso);
   const [rows, setRows] = useState<ExerciseRow[]>([mkRow()]);
   const [notes, setNotes] = useState("");
@@ -71,6 +81,11 @@ export function LogWorkoutModal({ open, onClose }: Props) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
   const [historyExercise, setHistoryExercise] = useState<string | null>(null);
+  // Cardio state
+  const [cardioType, setCardioType] = useState<CardioExerciseType>("treadmill");
+  const [cardioDuration, setCardioDuration] = useState("");
+  const [cardioDistance, setCardioDistance] = useState("");
+  const [cardioIncline, setCardioIncline] = useState("");
 
   const queryClient = useQueryClient();
   const { data: exerciseList = [] } = useGetExerciseList();
@@ -83,6 +98,7 @@ export function LogWorkoutModal({ open, onClose }: Props) {
   });
   const { data: suggestions = [] } = useGetWorkoutSuggestions({ query: { enabled: open } });
   const mutation = useLogWorkout();
+  const cardioMutation = useLogCardio();
   const createTemplateMutation = useCreateWorkoutTemplate();
 
   const prMap = useMemo(() => {
@@ -231,7 +247,48 @@ export function LogWorkoutModal({ open, onClose }: Props) {
     setTemplateDropdownOpen(false);
   };
 
+  const handleCardioSave = () => {
+    if (!cardioDuration || cardioMutation.isPending) return;
+    setErrorMsg(null);
+    cardioMutation.mutate(
+      {
+        data: {
+          date,
+          exerciseType: cardioType,
+          durationMinutes: parseInt(cardioDuration, 10),
+          distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null,
+          inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null,
+          bodyWeightLbs: bodyWeightLbs ? parseFloat(bodyWeightLbs) : null,
+          notes: notes.trim() || null,
+        },
+      },
+      {
+        onSuccess: (result) => {
+          setSavedCalories(result.caloriesBurned ?? null);
+          setSavedCount(0); // reuse success screen
+          if (result.caloriesBurned && cardioDuration) {
+            const endTime = new Date();
+            const startTime = new Date(endTime.getTime() - parseInt(cardioDuration, 10) * 60 * 1000);
+            saveWorkoutToHealthKit({
+              startDate: startTime,
+              endDate: endTime,
+              calories: result.caloriesBurned,
+              activityType: cardioType,
+            }).catch(console.error);
+          }
+          queryClient.invalidateQueries({
+            predicate: (q) => typeof q.queryKey[0] === "string" && String(q.queryKey[0]).startsWith("/api/workouts"),
+          });
+        },
+        onError: (err: unknown) => {
+          setErrorMsg(err instanceof Error ? err.message : "Something went wrong.");
+        },
+      },
+    );
+  };
+
   const handleClose = () => {
+    setMode("strength");
     setDate(todayIso());
     setRows([mkRow()]);
     setNotes("");
@@ -245,7 +302,12 @@ export function LogWorkoutModal({ open, onClose }: Props) {
     setSelectedTemplateId(null);
     setTemplateDropdownOpen(false);
     setHistoryExercise(null);
+    setCardioType("treadmill");
+    setCardioDuration("");
+    setCardioDistance("");
+    setCardioIncline("");
     mutation.reset();
+    cardioMutation.reset();
     onClose();
   };
 
@@ -281,7 +343,9 @@ export function LogWorkoutModal({ open, onClose }: Props) {
             <div>
               <p className="text-lg font-semibold">Session saved!</p>
               <p className="text-muted-foreground text-sm mt-1">
-                {savedCount} set{savedCount !== 1 ? "s" : ""} logged for {date}. Charts updated.
+                {savedCount > 0
+                  ? `${savedCount} set${savedCount !== 1 ? "s" : ""} logged for ${date}. Charts updated.`
+                  : `Cardio session logged for ${date}.`}
               </p>
               {savedCalories !== null && (
                 <p className="text-orange-400 text-sm mt-2 font-medium">
@@ -306,7 +370,112 @@ export function LogWorkoutModal({ open, onClose }: Props) {
               />
             </div>
 
-            <div className="flex gap-2">
+            {/* Mode toggle */}
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setMode("strength")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium transition-colors ${mode === "strength" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+              >
+                <Dumbbell className="w-4 h-4" /> Strength
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("cardio")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium transition-colors ${mode === "cardio" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+              >
+                <Heart className="w-4 h-4" /> Cardio
+              </button>
+            </div>
+
+            {mode === "cardio" && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Type</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {CARDIO_TYPES.map((t) => (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => setCardioType(t.value)}
+                        className={`py-2 px-3 rounded-md text-sm font-medium border transition-colors ${cardioType === t.value ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground hover:border-primary"}`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Duration (min)</Label>
+                    <Input
+                      type="number" min="1" step="1"
+                      value={cardioDuration}
+                      onChange={(e) => setCardioDuration(e.target.value)}
+                      placeholder="30"
+                      className="bg-background border-border text-foreground"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Distance (mi) <span className="text-muted-foreground font-normal">optional</span></Label>
+                    <Input
+                      type="number" min="0" step="0.1"
+                      value={cardioDistance}
+                      onChange={(e) => setCardioDistance(e.target.value)}
+                      placeholder="2.5"
+                      className="bg-background border-border text-foreground"
+                    />
+                  </div>
+                  {cardioType === "treadmill" && (
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium">Incline (%) <span className="text-muted-foreground font-normal">optional</span></Label>
+                      <Input
+                        type="number" min="0" max="30" step="0.5"
+                        value={cardioIncline}
+                        onChange={(e) => setCardioIncline(e.target.value)}
+                        placeholder="2.0"
+                        className="bg-background border-border text-foreground"
+                      />
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Body weight (lbs) <span className="text-muted-foreground font-normal">optional</span></Label>
+                    <Input
+                      type="number" min="0" step="0.1"
+                      value={bodyWeightLbs}
+                      onChange={(e) => setBodyWeightLbs(e.target.value)}
+                      placeholder="175"
+                      className="bg-background border-border text-foreground"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Notes <span className="text-muted-foreground font-normal">optional</span></Label>
+                  <Textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="How did it feel?"
+                    rows={2}
+                    className="bg-background border-border text-foreground resize-none text-sm"
+                  />
+                </div>
+                {errorMsg && (
+                  <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{errorMsg}</p>
+                )}
+                <div className="flex gap-3 pt-1">
+                  <Button variant="outline" className="flex-1 border-border" onClick={handleClose} disabled={cardioMutation.isPending}>Cancel</Button>
+                  <Button
+                    className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                    onClick={handleCardioSave}
+                    disabled={!cardioDuration || cardioMutation.isPending}
+                  >
+                    {cardioMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</> : "Save Session"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {mode === "strength" && <><div className="flex gap-2">
               {lastSession && (
                 <Button
                   type="button"
@@ -614,6 +783,7 @@ export function LogWorkoutModal({ open, onClose }: Props) {
                 )}
               </Button>
             </div>
+            </>}
           </div>
         )}
       </DialogContent>

@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { sql, eq, asc, and, desc } from "drizzle-orm";
-import { db, workoutSetsTable, workoutTemplatesTable, templateExercisesTable, bodyMetricsTable, workoutSessionsTable } from "@workspace/db";
+import { db, workoutSetsTable, workoutTemplatesTable, templateExercisesTable, bodyMetricsTable, workoutSessionsTable, cardioSessionsTable } from "@workspace/db";
 import {
   UploadWorkoutCsvResponse,
   GetWorkoutsByExerciseResponse,
@@ -31,6 +31,8 @@ import {
   DeleteWorkoutTemplateResponse,
   GetWorkoutSuggestionsResponse,
   GetWorkoutSessionsCaloriesResponse,
+  LogCardioBody,
+  LogCardioResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -967,6 +969,67 @@ router.get("/workouts/sessions-calories", async (req, res): Promise<void> => {
   }));
 
   res.json(GetWorkoutSessionsCaloriesResponse.parse(result));
+});
+
+router.post("/workouts/log-cardio", async (req, res): Promise<void> => {
+  const userId = (req as any).userId as number;
+  const parsed = LogCardioBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { date, exerciseType, durationMinutes, distanceMiles, inclinePercent, bodyWeightLbs, notes } = parsed.data;
+
+  // Fetch body weight for calorie calc (use provided or last logged)
+  let weightKg = 70; // default fallback
+  if (bodyWeightLbs) {
+    weightKg = bodyWeightLbs / KG_TO_LBS;
+  } else {
+    const bw = await db
+      .select({ value: bodyMetricsTable.weightKg })
+      .from(bodyMetricsTable)
+      .where(eq(bodyMetricsTable.userId, userId))
+      .orderBy(desc(bodyMetricsTable.date))
+      .limit(1);
+    if (bw[0]) weightKg = Number(bw[0].value);
+  }
+
+  // Calorie calculation
+  let caloriesBurned: number | null = null;
+  const hours = durationMinutes / 60;
+
+  if (exerciseType === "treadmill" && distanceMiles) {
+    const speedMph = distanceMiles / hours;
+    const grade = (inclinePercent ?? 0) / 100;
+    // ACSM formula: different for walking vs running
+    const met = speedMph < 5
+      ? 0.1 * speedMph + 1.8 * speedMph * grade + 3.5
+      : 0.2 * speedMph + 0.9 * speedMph * grade + 3.5;
+    caloriesBurned = Math.round(met * weightKg * hours * 10) / 10;
+  } else if (exerciseType === "outdoor_run" && distanceMiles) {
+    const speedMph = distanceMiles / hours;
+    const met = 0.2 * speedMph + 3.5;
+    caloriesBurned = Math.round(met * weightKg * hours * 10) / 10;
+  } else if (exerciseType === "bike") {
+    const met = distanceMiles ? Math.min(10, Math.max(4, (distanceMiles / hours) * 0.4)) : 6.0;
+    caloriesBurned = Math.round(met * weightKg * hours * 10) / 10;
+  } else if (exerciseType === "elliptical") {
+    caloriesBurned = Math.round(6.0 * weightKg * hours * 10) / 10;
+  }
+
+  await db.insert(cardioSessionsTable).values({
+    userId,
+    date,
+    exerciseType,
+    durationMinutes,
+    distanceMiles: distanceMiles != null ? String(distanceMiles) : null,
+    inclinePercent: inclinePercent != null ? String(inclinePercent) : null,
+    caloriesBurned: caloriesBurned != null ? String(caloriesBurned) : null,
+    notes: notes ?? null,
+  });
+
+  res.json(LogCardioResponse.parse({ caloriesBurned }));
 });
 
 export default router;

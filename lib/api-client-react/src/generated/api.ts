@@ -45,6 +45,8 @@ import type {
   IntGoal,
   IntGoalBody,
   LastSession,
+  LogCardioBody,
+  LogCardioResponse,
   LogWorkoutBody,
   LogWorkoutResponse,
   MostImprovedItem,
@@ -1076,6 +1078,26 @@ export const useLogWorkout = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getLogWorkoutMutationOptions(options));
     }
+
+export const getLogCardioUrl = () => `/api/workouts/log-cardio`;
+
+export const logCardio = async (logCardioBody: LogCardioBody, options?: RequestInit): Promise<LogCardioResponse> => {
+  return customFetch<LogCardioResponse>(getLogCardioUrl(), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(logCardioBody),
+  });
+};
+
+export const useLogCardio = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof logCardio>>, TError, { data: BodyType<LogCardioBody> }, TContext> }
+): UseMutationResult<Awaited<ReturnType<typeof logCardio>>, TError, { data: BodyType<LogCardioBody> }, TContext> => {
+  const mutationKey = ['logCardio'];
+  const { mutation: mutationOptions } = options ?? {};
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof logCardio>>, { data: BodyType<LogCardioBody> }> = ({ data }) => logCardio(data);
+  return useMutation({ mutationFn, mutationKey, ...mutationOptions });
+};
 
 /**
  * Returns the all-time max single-set weight per exercise

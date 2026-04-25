@@ -54,9 +54,19 @@ public class HealthKitPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
+        let activityTypeStr = call.getString("activityType") ?? "strength"
+        let activityType: HKWorkoutActivityType
+        switch activityTypeStr {
+        case "outdoor_run": activityType = .running
+        case "treadmill": activityType = .running
+        case "bike": activityType = .cycling
+        case "elliptical": activityType = .elliptical
+        default: activityType = .traditionalStrengthTraining
+        }
+
         let energyBurned = HKQuantity(unit: .kilocalorie(), doubleValue: calories)
         let workout = HKWorkout(
-            activityType: .traditionalStrengthTraining,
+            activityType: activityType,
             start: startDate,
             end: endDate,
             duration: endDate.timeIntervalSince(startDate),

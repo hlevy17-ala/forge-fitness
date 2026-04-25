@@ -100,6 +100,22 @@ export interface LogWorkoutExercise {
   sets: number;
 }
 
+export type CardioExerciseType = 'treadmill' | 'outdoor_run' | 'bike' | 'elliptical';
+
+export interface LogCardioBody {
+  date: string;
+  exerciseType: CardioExerciseType;
+  durationMinutes: number;
+  distanceMiles?: number | null;
+  inclinePercent?: number | null;
+  bodyWeightLbs?: number | null;
+  notes?: string | null;
+}
+
+export interface LogCardioResponse {
+  caloriesBurned: number | null;
+}
+
 export interface LogWorkoutBody {
   /** Workout date (YYYY-MM-DD) */
   date: string;
