@@ -518,6 +518,29 @@ export const DeleteWorkoutTemplateResponse = zod.object({
   "deleted": zod.number().describe('Number of sets deleted')
 })
 
+export const CardioTemplateItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "exerciseType": zod.string(),
+  "durationMinutes": zod.number(),
+  "distanceMiles": zod.number().nullable(),
+  "inclinePercent": zod.number().nullable(),
+  "createdAt": zod.string(),
+})
+export type CardioTemplateItem = zod.infer<typeof CardioTemplateItem>
+export const GetCardioTemplatesResponse = zod.array(CardioTemplateItem)
+
+export const CreateCardioTemplateBody = zod.object({
+  "name": zod.string(),
+  "exerciseType": CardioExerciseType,
+  "durationMinutes": zod.number().int().positive(),
+  "distanceMiles": zod.number().positive().nullish(),
+  "inclinePercent": zod.number().min(0).max(30).nullish(),
+})
+export type CreateCardioTemplateBody = zod.infer<typeof CreateCardioTemplateBody>
+
+export const DeleteCardioTemplateResponse = zod.object({ "deleted": zod.number() })
+
 
 /**
  * @summary Update an individual workout set

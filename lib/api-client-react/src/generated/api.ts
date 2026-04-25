@@ -45,6 +45,8 @@ import type {
   IntGoal,
   IntGoalBody,
   LastSession,
+  CardioTemplateItem,
+  CreateCardioTemplateBody,
   LogCardioBody,
   LogCardioResponse,
   LogWorkoutBody,
@@ -1078,6 +1080,38 @@ export const useLogWorkout = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getLogWorkoutMutationOptions(options));
     }
+
+export const getGetCardioTemplatesUrl = () => `/api/workouts/cardio-templates`;
+
+export const getCardioTemplates = async (options?: RequestInit): Promise<CardioTemplateItem[]> =>
+  customFetch<CardioTemplateItem[]>(getGetCardioTemplatesUrl(), { ...options });
+
+export const useGetCardioTemplates = <TError = ErrorType<ErrorResponse>>(
+  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCardioTemplates>>, TError> }
+): UseQueryResult<CardioTemplateItem[], TError> => {
+  const { query: queryOptions } = options ?? {};
+  return useQuery({ queryKey: [getGetCardioTemplatesUrl()], queryFn: () => getCardioTemplates(), ...queryOptions });
+};
+
+export const useCreateCardioTemplate = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<CardioTemplateItem, TError, { data: BodyType<CreateCardioTemplateBody> }, TContext> }
+): UseMutationResult<CardioTemplateItem, TError, { data: BodyType<CreateCardioTemplateBody> }, TContext> => {
+  const mutationFn: MutationFunction<CardioTemplateItem, { data: BodyType<CreateCardioTemplateBody> }> = ({ data }) =>
+    customFetch<CardioTemplateItem>('/api/workouts/cardio-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  return useMutation({ mutationFn, ...options?.mutation });
+};
+
+export const useDeleteCardioTemplate = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<{ deleted: number }, TError, { id: number }, TContext> }
+): UseMutationResult<{ deleted: number }, TError, { id: number }, TContext> => {
+  const mutationFn: MutationFunction<{ deleted: number }, { id: number }> = ({ id }) =>
+    customFetch<{ deleted: number }>(`/api/workouts/cardio-templates/${id}`, { method: 'DELETE' });
+  return useMutation({ mutationFn, ...options?.mutation });
+};
 
 export const getLogCardioUrl = () => `/api/workouts/log-cardio`;
 

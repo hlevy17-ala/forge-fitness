@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { sql, eq, asc, and, desc } from "drizzle-orm";
-import { db, workoutSetsTable, workoutTemplatesTable, templateExercisesTable, bodyMetricsTable, workoutSessionsTable, cardioSessionsTable } from "@workspace/db";
+import { db, workoutSetsTable, workoutTemplatesTable, templateExercisesTable, bodyMetricsTable, workoutSessionsTable, cardioSessionsTable, cardioTemplatesTable } from "@workspace/db";
 import {
   UploadWorkoutCsvResponse,
   GetWorkoutsByExerciseResponse,
@@ -33,6 +33,10 @@ import {
   GetWorkoutSessionsCaloriesResponse,
   LogCardioBody,
   LogCardioResponse,
+  CreateCardioTemplateBody,
+  GetCardioTemplatesResponse,
+  CardioTemplateItem,
+  DeleteCardioTemplateResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -998,6 +1002,46 @@ router.get("/workouts/sessions-calories", async (req, res): Promise<void> => {
   }));
 
   res.json(GetWorkoutSessionsCaloriesResponse.parse(result));
+});
+
+router.get("/workouts/cardio-templates", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const rows = await db.select().from(cardioTemplatesTable).where(eq(cardioTemplatesTable.userId, userId)).orderBy(desc(cardioTemplatesTable.createdAt));
+  res.json(GetCardioTemplatesResponse.parse(rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    exerciseType: r.exerciseType,
+    durationMinutes: r.durationMinutes,
+    distanceMiles: r.distanceMiles != null ? Number(r.distanceMiles) : null,
+    inclinePercent: r.inclinePercent != null ? Number(r.inclinePercent) : null,
+    createdAt: r.createdAt.toISOString(),
+  }))));
+});
+
+router.post("/workouts/cardio-templates", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const parsed = CreateCardioTemplateBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const { name, exerciseType, durationMinutes, distanceMiles, inclinePercent } = parsed.data;
+  const [row] = await db.insert(cardioTemplatesTable).values({
+    userId, name, exerciseType, durationMinutes,
+    distanceMiles: distanceMiles != null ? String(distanceMiles) : null,
+    inclinePercent: inclinePercent != null ? String(inclinePercent) : null,
+  }).returning();
+  res.json(CardioTemplateItem.parse({
+    id: row.id, name: row.name, exerciseType: row.exerciseType,
+    durationMinutes: row.durationMinutes,
+    distanceMiles: row.distanceMiles != null ? Number(row.distanceMiles) : null,
+    inclinePercent: row.inclinePercent != null ? Number(row.inclinePercent) : null,
+    createdAt: row.createdAt.toISOString(),
+  }));
+});
+
+router.delete("/workouts/cardio-templates/:id", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const id = parseInt(req.params.id, 10);
+  const result = await db.delete(cardioTemplatesTable).where(and(eq(cardioTemplatesTable.id, id), eq(cardioTemplatesTable.userId, userId)));
+  res.json(DeleteCardioTemplateResponse.parse({ deleted: result.rowCount ?? 0 }));
 });
 
 router.post("/workouts/log-cardio", async (req, res): Promise<void> => {

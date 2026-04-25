@@ -102,6 +102,24 @@ export interface LogWorkoutExercise {
 
 export type CardioExerciseType = 'treadmill' | 'outdoor_run' | 'bike' | 'elliptical';
 
+export interface CardioTemplateItem {
+  id: number;
+  name: string;
+  exerciseType: string;
+  durationMinutes: number;
+  distanceMiles: number | null;
+  inclinePercent: number | null;
+  createdAt: string;
+}
+
+export interface CreateCardioTemplateBody {
+  name: string;
+  exerciseType: CardioExerciseType;
+  durationMinutes: number;
+  distanceMiles?: number | null;
+  inclinePercent?: number | null;
+}
+
 export interface LogCardioBody {
   date: string;
   exerciseType: CardioExerciseType;

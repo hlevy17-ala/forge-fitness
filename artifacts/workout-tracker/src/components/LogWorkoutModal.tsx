@@ -23,6 +23,9 @@ import {
   useGetWorkoutTemplate,
   useCreateWorkoutTemplate,
   useGetWorkoutSuggestions,
+  useGetCardioTemplates,
+  useCreateCardioTemplate,
+  useDeleteCardioTemplate,
 } from "@workspace/api-client-react";
 import type { CardioExerciseType } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -86,6 +89,8 @@ export function LogWorkoutModal({ open, onClose }: Props) {
   const [cardioDuration, setCardioDuration] = useState("");
   const [cardioDistance, setCardioDistance] = useState("");
   const [cardioIncline, setCardioIncline] = useState("");
+  const [savingCardioTemplate, setSavingCardioTemplate] = useState(false);
+  const [cardioTemplateName, setCardioTemplateName] = useState("");
 
   const queryClient = useQueryClient();
   const { data: exerciseList = [] } = useGetExerciseList();
@@ -100,6 +105,9 @@ export function LogWorkoutModal({ open, onClose }: Props) {
   const mutation = useLogWorkout();
   const cardioMutation = useLogCardio();
   const createTemplateMutation = useCreateWorkoutTemplate();
+  const { data: cardioTemplates = [] } = useGetCardioTemplates({ query: { enabled: open && mode === "cardio" } });
+  const createCardioTemplateMutation = useCreateCardioTemplate();
+  const deleteCardioTemplateMutation = useDeleteCardioTemplate();
 
   const prMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -306,6 +314,8 @@ export function LogWorkoutModal({ open, onClose }: Props) {
     setCardioDuration("");
     setCardioDistance("");
     setCardioIncline("");
+    setSavingCardioTemplate(false);
+    setCardioTemplateName("");
     mutation.reset();
     cardioMutation.reset();
     onClose();
@@ -390,6 +400,36 @@ export function LogWorkoutModal({ open, onClose }: Props) {
 
             {mode === "cardio" && (
               <div className="space-y-3">
+                {cardioTemplates.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Load template</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {cardioTemplates.map((t) => (
+                        <div key={t.id} className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCardioType(t.exerciseType as CardioExerciseType);
+                              setCardioDuration(String(t.durationMinutes));
+                              setCardioDistance(t.distanceMiles != null ? String(t.distanceMiles) : "");
+                              setCardioIncline(t.inclinePercent != null ? String(t.inclinePercent) : "");
+                            }}
+                            className="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-colors"
+                          >
+                            {t.name}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteCardioTemplateMutation.mutate({ id: t.id }, { onSuccess: () => queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).includes("cardio-templates") }) })}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label className="text-sm font-medium">Type</Label>
                   <div className="grid grid-cols-2 gap-2">
@@ -459,6 +499,43 @@ export function LogWorkoutModal({ open, onClose }: Props) {
                     className="bg-background border-border text-foreground resize-none text-sm"
                   />
                 </div>
+                {cardioDuration && !savingCardioTemplate && (
+                  <button
+                    type="button"
+                    onClick={() => setSavingCardioTemplate(true)}
+                    className="w-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary text-xs py-1.5 rounded-md transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <BookmarkPlus className="w-3.5 h-3.5" /> Save as template
+                  </button>
+                )}
+                {savingCardioTemplate && (
+                  <div className="flex gap-2">
+                    <Input
+                      value={cardioTemplateName}
+                      onChange={(e) => setCardioTemplateName(e.target.value)}
+                      placeholder="Template name (e.g. Morning Run)"
+                      className="bg-background border-border text-foreground text-sm"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") { setSavingCardioTemplate(false); setCardioTemplateName(""); }
+                        if (e.key === "Enter" && cardioTemplateName.trim()) {
+                          createCardioTemplateMutation.mutate(
+                            { data: { name: cardioTemplateName.trim(), exerciseType: cardioType, durationMinutes: parseInt(cardioDuration, 10), distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null, inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null } },
+                            { onSuccess: () => { setSavingCardioTemplate(false); setCardioTemplateName(""); queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).includes("cardio-templates") }); } }
+                          );
+                        }
+                      }}
+                    />
+                    <Button size="sm" onClick={() => {
+                      if (!cardioTemplateName.trim()) return;
+                      createCardioTemplateMutation.mutate(
+                        { data: { name: cardioTemplateName.trim(), exerciseType: cardioType, durationMinutes: parseInt(cardioDuration, 10), distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null, inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null } },
+                        { onSuccess: () => { setSavingCardioTemplate(false); setCardioTemplateName(""); queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).includes("cardio-templates") }); } }
+                      );
+                    }} disabled={!cardioTemplateName.trim()} className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0">Save</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setSavingCardioTemplate(false); setCardioTemplateName(""); }} className="shrink-0">Cancel</Button>
+                  </div>
+                )}
                 {errorMsg && (
                   <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{errorMsg}</p>
                 )}

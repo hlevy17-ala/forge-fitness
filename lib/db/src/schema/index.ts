@@ -8,3 +8,4 @@ export * from "./userSettings";
 export * from "./workoutTemplates";
 export * from "./workoutSessions";
 export * from "./cardioSessions";
+export * from "./cardioTemplates";
