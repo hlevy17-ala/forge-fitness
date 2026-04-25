@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, isNull } from "drizzle-orm";
 import { randomBytes } from "crypto";
-import { db, usersTable, otpTokensTable, sessionsTable, workoutSetsTable, bodyMetricsTable, calorieLogsTable, workoutTemplatesTable } from "@workspace/db";
+import { db, usersTable, otpTokensTable, sessionsTable, workoutSetsTable, bodyMetricsTable, calorieLogsTable, workoutTemplatesTable, cardioSessionsTable, cardioTemplatesTable } from "@workspace/db";
 import {
   RequestOtpBody,
   RequestOtpResponse,
@@ -133,6 +133,8 @@ router.post("/auth/verify-otp", async (req, res): Promise<void> => {
         db.update(bodyMetricsTable).set({ userId: user.id }).where(eq(bodyMetricsTable.userId, guestUserId)),
         db.update(calorieLogsTable).set({ userId: user.id }).where(eq(calorieLogsTable.userId, guestUserId)),
         db.update(workoutTemplatesTable).set({ userId: user.id }).where(eq(workoutTemplatesTable.userId, guestUserId)),
+        db.update(cardioSessionsTable).set({ userId: user.id }).where(eq(cardioSessionsTable.userId, guestUserId)),
+        db.update(cardioTemplatesTable).set({ userId: user.id }).where(eq(cardioTemplatesTable.userId, guestUserId)),
       ]);
       // Clean up the guest user
       await db.delete(sessionsTable).where(eq(sessionsTable.userId, guestUserId));
