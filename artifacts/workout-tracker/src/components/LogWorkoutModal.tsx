@@ -22,6 +22,7 @@ import {
   useGetWorkoutTemplates,
   useGetWorkoutTemplate,
   useCreateWorkoutTemplate,
+  useDeleteWorkoutTemplate,
   useGetWorkoutSuggestions,
   useGetCardioTemplates,
   useCreateCardioTemplate,
@@ -82,6 +83,7 @@ export function LogWorkoutModal({ open, onClose }: Props) {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [expandedTemplateId, setExpandedTemplateId] = useState<number | null>(null);
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
   const [historyExercise, setHistoryExercise] = useState<string | null>(null);
   // Cardio state
@@ -105,6 +107,7 @@ export function LogWorkoutModal({ open, onClose }: Props) {
   const mutation = useLogWorkout();
   const cardioMutation = useLogCardio();
   const createTemplateMutation = useCreateWorkoutTemplate();
+  const deleteTemplateMutation = useDeleteWorkoutTemplate();
   const { data: cardioTemplates = [] } = useGetCardioTemplates({ query: { enabled: open && mode === "cardio" } });
   const createCardioTemplateMutation = useCreateCardioTemplate();
   const deleteCardioTemplateMutation = useDeleteCardioTemplate();
@@ -252,7 +255,7 @@ export function LogWorkoutModal({ open, onClose }: Props) {
 
   const handleLoadTemplate = (id: number) => {
     setSelectedTemplateId(id);
-    setTemplateDropdownOpen(false);
+    setExpandedTemplateId(null);
   };
 
   const handleCardioSave = () => {
@@ -308,6 +311,7 @@ export function LogWorkoutModal({ open, onClose }: Props) {
     setSavingTemplate(false);
     setTemplateName("");
     setSelectedTemplateId(null);
+    setExpandedTemplateId(null);
     setTemplateDropdownOpen(false);
     setHistoryExercise(null);
     setCardioType("treadmill");
@@ -552,7 +556,7 @@ export function LogWorkoutModal({ open, onClose }: Props) {
               </div>
             )}
 
-            {mode === "strength" && <><div className="flex gap-2">
+            {mode === "strength" && <><div className="space-y-2">
               {lastSession && (
                 <Button
                   type="button"
@@ -569,39 +573,72 @@ export function LogWorkoutModal({ open, onClose }: Props) {
                       })),
                     )
                   }
-                  className="flex-1 border-dashed border-primary/50 text-primary hover:bg-primary/10 gap-2 text-xs"
+                  className="w-full border-dashed border-primary/50 text-primary hover:bg-primary/10 gap-2 text-xs"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  Repeat last ({lastSession.date})
+                  Repeat last session ({lastSession.date})
                 </Button>
               )}
 
               {templates.length > 0 && (
-                <div className="relative flex-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setTemplateDropdownOpen((o) => !o)}
-                    className="w-full border-dashed border-muted-foreground/40 text-muted-foreground hover:text-foreground gap-2 text-xs"
-                  >
-                    Load template
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  </Button>
-                  {templateDropdownOpen && (
-                    <div className="absolute top-full mt-1 left-0 right-0 z-50 bg-card border border-border rounded-md shadow-lg py-1">
-                      {templates.map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => handleLoadTemplate(t.id)}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
-                        >
-                          {t.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Saved templates</p>
+                  <div className="flex flex-col gap-2">
+                    {templates.map((t) => {
+                      const isExpanded = expandedTemplateId === t.id;
+                      return (
+                        <div key={t.id} className="rounded-lg border border-border bg-background/50 overflow-hidden">
+                          <div className="flex items-center gap-2 px-3 py-2.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newExpanded = isExpanded ? null : t.id;
+                                setExpandedTemplateId(newExpanded);
+                                if (newExpanded) setSelectedTemplateId(t.id);
+                              }}
+                              className="flex-1 text-left flex items-center gap-2 min-w-0"
+                            >
+                              <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                              <span className="text-sm font-medium truncate">{t.name}</span>
+                            </button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleLoadTemplate(t.id)}
+                              className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs h-7 px-3 shrink-0"
+                            >
+                              Use
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => deleteTemplateMutation.mutate({ id: t.id }, {
+                                onSuccess: () => {
+                                  if (expandedTemplateId === t.id) setExpandedTemplateId(null);
+                                  queryClient.invalidateQueries({
+                                    predicate: (q) => String(q.queryKey[0]).includes("/api/workouts/templates"),
+                                  });
+                                },
+                              })}
+                              className="text-muted-foreground hover:text-destructive transition-colors shrink-0 ml-1"
+                              aria-label="Delete template"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          {isExpanded && selectedTemplate && selectedTemplate.id === t.id && (
+                            <div className="border-t border-border px-3 py-2 space-y-1">
+                              {selectedTemplate.exercises.map((ex) => (
+                                <div key={ex.id} className="flex justify-between text-xs text-muted-foreground">
+                                  <span>{ex.exercise}</span>
+                                  <span>{ex.sets} × {ex.reps} @ {ex.weightLbs} lbs</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
