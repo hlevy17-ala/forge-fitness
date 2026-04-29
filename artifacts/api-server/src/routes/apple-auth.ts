@@ -68,12 +68,23 @@ router.post("/auth/apple", async (req, res): Promise<void> => {
   if (guestToken) {
     const [guestSession] = await db.select().from(sessionsTable).where(eq(sessionsTable.token, guestToken));
     if (guestSession && guestSession.userId !== user.id) {
-      const { workoutSetsTable, bodyMetricsTable, calorieLogsTable, workoutTemplatesTable } = await import("@workspace/db");
+      const {
+        workoutSetsTable,
+        bodyMetricsTable,
+        calorieLogsTable,
+        workoutTemplatesTable,
+        cardioSessionsTable,
+        cardioTemplatesTable,
+        bodyMeasurementsTable,
+      } = await import("@workspace/db");
       await Promise.all([
         db.update(workoutSetsTable).set({ userId: user.id }).where(eq(workoutSetsTable.userId, guestSession.userId)),
         db.update(bodyMetricsTable).set({ userId: user.id }).where(eq(bodyMetricsTable.userId, guestSession.userId)),
         db.update(calorieLogsTable).set({ userId: user.id }).where(eq(calorieLogsTable.userId, guestSession.userId)),
         db.update(workoutTemplatesTable).set({ userId: user.id }).where(eq(workoutTemplatesTable.userId, guestSession.userId)),
+        db.update(cardioSessionsTable).set({ userId: user.id }).where(eq(cardioSessionsTable.userId, guestSession.userId)),
+        db.update(cardioTemplatesTable).set({ userId: user.id }).where(eq(cardioTemplatesTable.userId, guestSession.userId)),
+        db.update(bodyMeasurementsTable).set({ userId: user.id }).where(eq(bodyMeasurementsTable.userId, guestSession.userId)),
       ]);
       await db.delete(sessionsTable).where(eq(sessionsTable.userId, guestSession.userId));
       await db.delete(usersTable).where(eq(usersTable.id, guestSession.userId));
