@@ -28,7 +28,7 @@ import {
   useCreateCardioTemplate,
   useDeleteCardioTemplate,
 } from "@workspace/api-client-react";
-import type { CardioExerciseType } from "@workspace/api-client-react";
+import type { CardioExerciseType, CardioTemplateItem } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ExerciseHistorySheet } from "./ExerciseHistorySheet";
 
@@ -61,6 +61,8 @@ function isRowValid(r: ExerciseRow): boolean {
 interface Props {
   open: boolean;
   onClose: () => void;
+  initialStrengthTemplateId?: number | null;
+  initialCardioTemplate?: CardioTemplateItem | null;
 }
 
 const CARDIO_TYPES: { value: CardioExerciseType; label: string }[] = [
@@ -70,7 +72,7 @@ const CARDIO_TYPES: { value: CardioExerciseType; label: string }[] = [
   { value: "elliptical", label: "Elliptical" },
 ];
 
-export function LogWorkoutModal({ open, onClose }: Props) {
+export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, initialCardioTemplate }: Props) {
   const [mode, setMode] = useState<"strength" | "cardio">("strength");
   const [date, setDate] = useState(todayIso);
   const [rows, setRows] = useState<ExerciseRow[]>([mkRow()]);
@@ -338,6 +340,18 @@ export function LogWorkoutModal({ open, onClose }: Props) {
       setRows(templateRows);
       setSelectedTemplateId(null);
     }
+  }
+
+  // Apply initial template passed from Templates modal
+  if (initialStrengthTemplateId && !selectedTemplateId && rows.length === 1 && !rows[0].exercise) {
+    setSelectedTemplateId(initialStrengthTemplateId);
+  }
+  if (initialCardioTemplate && mode === "strength" && rows.length === 1 && !rows[0].exercise) {
+    setMode("cardio");
+    setCardioType(initialCardioTemplate.exerciseType as CardioExerciseType);
+    setCardioDuration(String(initialCardioTemplate.durationMinutes));
+    setCardioDistance(initialCardioTemplate.distanceMiles != null ? String(initialCardioTemplate.distanceMiles) : "");
+    setCardioIncline(initialCardioTemplate.inclinePercent != null ? String(initialCardioTemplate.inclinePercent) : "");
   }
 
   return (

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dumbbell, Activity, Scale, Upload, Flame, BarChart2, Plus, History, AlertTriangle, Download, LogOut } from "lucide-react";
+import { Dumbbell, Activity, Scale, Upload, Flame, BarChart2, Plus, History, AlertTriangle, Download, LogOut, BookMarked } from "lucide-react";
 import { ForgeIcon } from "@/components/ForgeIcon";
 import { useAuth } from "@/context/AuthContext";
 import { useLocation } from "wouter";
@@ -13,7 +13,9 @@ import { CalorieTracker } from "@/components/CalorieTracker";
 import { InsightsTab } from "@/components/insights/InsightsTab";
 import { LogWorkoutModal } from "@/components/LogWorkoutModal";
 import { SessionHistoryModal } from "@/components/SessionHistoryModal";
+import { TemplatesModal } from "@/components/TemplatesModal";
 import { useGetWorkoutSessions } from "@workspace/api-client-react";
+import type { CardioTemplateItem } from "@workspace/api-client-react";
 
 function daysSince(dateStr: string): number {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -26,8 +28,23 @@ function daysSince(dateStr: string): number {
 export default function Dashboard() {
   const [logOpen, setLogOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [initialStrengthTemplateId, setInitialStrengthTemplateId] = useState<number | null>(null);
+  const [initialCardioTemplate, setInitialCardioTemplate] = useState<CardioTemplateItem | null>(null);
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
+
+  const handleUseStrengthTemplate = (id: number) => {
+    setInitialStrengthTemplateId(id);
+    setInitialCardioTemplate(null);
+    setLogOpen(true);
+  };
+
+  const handleUseCardioTemplate = (template: CardioTemplateItem) => {
+    setInitialCardioTemplate(template);
+    setInitialStrengthTemplateId(null);
+    setLogOpen(true);
+  };
 
   const { data: sessions = [] } = useGetWorkoutSessions();
   const lastDate = sessions[0]?.date ?? null;
@@ -57,6 +74,16 @@ export default function Dashboard() {
               <LogOut className="w-4 h-4" />
             </Button>
             <Button
+              onClick={() => setTemplatesOpen(true)}
+              variant="outline"
+              className="border-border text-foreground hover:bg-muted gap-2"
+              size="sm"
+              title="Templates"
+            >
+              <BookMarked className="w-4 h-4" />
+              <span className="hidden sm:inline">Templates</span>
+            </Button>
+            <Button
               onClick={() => setHistoryOpen(true)}
               variant="outline"
               className="border-border text-foreground hover:bg-muted gap-2"
@@ -78,8 +105,20 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <LogWorkoutModal open={logOpen} onClose={() => setLogOpen(false)} />
+      <LogWorkoutModal
+        open={logOpen}
+        onClose={() => { setLogOpen(false); setInitialStrengthTemplateId(null); setInitialCardioTemplate(null); }}
+        initialStrengthTemplateId={initialStrengthTemplateId}
+        initialCardioTemplate={initialCardioTemplate}
+      />
       <SessionHistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <TemplatesModal
+        open={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        onUseStrengthTemplate={handleUseStrengthTemplate}
+        onUseCardioTemplate={handleUseCardioTemplate}
+        onCreateNew={() => setLogOpen(true)}
+      />
 
       <main className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-8 space-y-4">
         {user?.isGuest && (
