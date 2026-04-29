@@ -1,6 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { saveWorkoutToHealthKit } from "@/lib/healthkit";
-import { Plus, Trash2, CheckCircle2, Loader2, RotateCcw, Trophy, BookmarkPlus, ChevronDown, BarChart2, Dumbbell, Heart } from "lucide-react";
+import {
+  Plus, Trash2, CheckCircle2, Loader2, RotateCcw, Trophy, BookmarkPlus,
+  ChevronDown, BarChart2, Dumbbell, Heart, Timer, Play, Square, AlertTriangle, Check, X
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -32,30 +35,44 @@ import type { CardioExerciseType, CardioTemplateItem } from "@workspace/api-clie
 import { useQueryClient } from "@tanstack/react-query";
 import { ExerciseHistorySheet } from "./ExerciseHistorySheet";
 
+const REST_TIMER_KEY = "forge_rest_timer_default";
+const DEFAULT_REST_SECONDS = 60;
+
+function getDefaultRest(): number {
+  const stored = localStorage.getItem(REST_TIMER_KEY);
+  return stored ? parseInt(stored, 10) : DEFAULT_REST_SECONDS;
+}
+
 function todayIso(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-type ExerciseRow = {
-  id: number;
-  exercise: string;
-  weightLbs: string;
-  reps: string;
-  sets: string;
-};
-
-function mkRow(): ExerciseRow {
-  return { id: Date.now() + Math.random(), exercise: "", weightLbs: "", reps: "", sets: "3" };
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function isRowValid(r: ExerciseRow): boolean {
-  return (
-    r.exercise.trim().length > 0 &&
-    parseFloat(r.weightLbs) > 0 &&
-    parseInt(r.reps, 10) > 0 &&
-    parseInt(r.sets, 10) > 0
-  );
+type SetRow = {
+  id: number;
+  weightLbs: string;
+  reps: string;
+  done: boolean;
+};
+
+type ExerciseBlock = {
+  id: number;
+  exercise: string;
+  sets: SetRow[];
+};
+
+function mkSet(weightLbs = "", reps = ""): SetRow {
+  return { id: Date.now() + Math.random(), weightLbs, reps, done: false };
+}
+
+function mkBlock(): ExerciseBlock {
+  return { id: Date.now() + Math.random(), exercise: "", sets: [mkSet(), mkSet(), mkSet()] };
 }
 
 interface Props {
@@ -75,10 +92,9 @@ const CARDIO_TYPES: { value: CardioExerciseType; label: string }[] = [
 export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, initialCardioTemplate }: Props) {
   const [mode, setMode] = useState<"strength" | "cardio">("strength");
   const [date, setDate] = useState(todayIso);
-  const [rows, setRows] = useState<ExerciseRow[]>([mkRow()]);
+  const [blocks, setBlocks] = useState<ExerciseBlock[]>([mkBlock()]);
   const [notes, setNotes] = useState("");
   const [bodyWeightLbs, setBodyWeightLbs] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState("");
   const [savedCount, setSavedCount] = useState<number | null>(null);
   const [savedCalories, setSavedCalories] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -86,8 +102,22 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
   const [templateName, setTemplateName] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [expandedTemplateId, setExpandedTemplateId] = useState<number | null>(null);
-  const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
   const [historyExercise, setHistoryExercise] = useState<string | null>(null);
+  const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
+
+  // Workout timer
+  const [timerPrompt, setTimerPrompt] = useState(false);
+  const [workoutStarted, setWorkoutStarted] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Rest timer
+  const [restSeconds, setRestSeconds] = useState(0);
+  const [restDefault, setRestDefault] = useState(getDefaultRest);
+  const [editingRestDefault, setEditingRestDefault] = useState(false);
+  const [restDefaultInput, setRestDefaultInput] = useState(String(getDefaultRest()));
+  const restRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Cardio state
   const [cardioType, setCardioType] = useState<CardioExerciseType>("treadmill");
   const [cardioDuration, setCardioDuration] = useState("");
@@ -114,21 +144,56 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
   const createCardioTemplateMutation = useCreateCardioTemplate();
   const deleteCardioTemplateMutation = useDeleteCardioTemplate();
 
+  // Workout timer
+  const startTimer = useCallback(() => {
+    setWorkoutStarted(true);
+    setElapsedSeconds(0);
+    timerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+  }, []);
+
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
+  // Rest timer
+  const startRest = useCallback(() => {
+    if (restRef.current) clearInterval(restRef.current);
+    setRestSeconds(restDefault);
+    restRef.current = setInterval(() => {
+      setRestSeconds(s => {
+        if (s <= 1) {
+          clearInterval(restRef.current!);
+          restRef.current = null;
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+  }, [restDefault]);
+
+  const stopRest = useCallback(() => {
+    if (restRef.current) clearInterval(restRef.current);
+    restRef.current = null;
+    setRestSeconds(0);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (restRef.current) clearInterval(restRef.current);
+    };
+  }, []);
+
   const prMap = useMemo(() => {
     const map = new Map<string, number>();
-    for (const r of personalRecords) {
-      map.set(r.exercise.toLowerCase(), r.maxWeightKg * 2.20462);
-    }
+    for (const r of personalRecords) map.set(r.exercise.toLowerCase(), r.maxWeightKg * 2.20462);
     return map;
   }, [personalRecords]);
 
   const lastSessionMap = useMemo(() => {
     const map = new Map<string, { weightLbs: number; reps: number; sets: number }>();
-    if (lastSession) {
-      for (const ex of lastSession.exercises) {
-        map.set(ex.exercise.toLowerCase(), { weightLbs: ex.weightLbs, reps: ex.reps, sets: ex.sets });
-      }
-    }
+    if (lastSession) for (const ex of lastSession.exercises) map.set(ex.exercise.toLowerCase(), { weightLbs: ex.weightLbs, reps: ex.reps, sets: ex.sets });
     return map;
   }, [lastSession]);
 
@@ -144,131 +209,151 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
 
   const suggestionMap = useMemo(() => {
     const map = new Map<string, { suggestedWeightLbs: number; currentWeightLbs: number; reason: string }>();
-    for (const s of suggestions) {
-      map.set(s.exercise.toLowerCase(), { suggestedWeightLbs: s.suggestedWeightLbs, currentWeightLbs: s.currentWeightLbs, reason: s.reason });
-    }
+    for (const s of suggestions) map.set(s.exercise.toLowerCase(), { suggestedWeightLbs: s.suggestedWeightLbs, currentWeightLbs: s.currentWeightLbs, reason: s.reason });
     return map;
   }, [suggestions]);
 
-  const addRow = () => setRows((r) => [...r, mkRow()]);
-  const removeRow = (id: number) =>
-    setRows((r) => (r.length > 1 ? r.filter((x) => x.id !== id) : r));
-  const updateRow = (id: number, key: keyof ExerciseRow, value: string) =>
-    setRows((r) => r.map((x) => {
-      if (x.id !== id) return x;
-      const updated = { ...x, [key]: value };
-      // Auto-fill weight from suggestion when exercise is set and weight is empty
-      if (key === "exercise" && !x.weightLbs) {
-        const suggestion = suggestionMap.get(value.toLowerCase().trim());
+  // Block helpers
+  const addBlock = () => setBlocks(b => [...b, mkBlock()]);
+  const removeBlock = (id: number) => setBlocks(b => b.length > 1 ? b.filter(x => x.id !== id) : b);
+  const updateBlockExercise = (blockId: number, exercise: string) => {
+    setBlocks(b => b.map(x => {
+      if (x.id !== blockId) return x;
+      const updated = { ...x, exercise };
+      if (!x.sets[0].weightLbs) {
+        const suggestion = suggestionMap.get(exercise.toLowerCase().trim());
         if (suggestion) {
-          updated.weightLbs = String(suggestion.suggestedWeightLbs);
+          updated.sets = x.sets.map(s => ({ ...s, weightLbs: String(suggestion.suggestedWeightLbs) }));
+        } else {
+          const last = lastSessionMap.get(exercise.toLowerCase().trim());
+          if (last) updated.sets = x.sets.map(s => ({ ...s, weightLbs: String(last.weightLbs), reps: String(last.reps) }));
         }
       }
       return updated;
     }));
+  };
+  const updateSet = (blockId: number, setId: number, key: keyof SetRow, value: string | boolean) =>
+    setBlocks(b => b.map(x => x.id !== blockId ? x : { ...x, sets: x.sets.map(s => s.id !== setId ? s : { ...s, [key]: value }) }));
+  const addSet = (blockId: number) =>
+    setBlocks(b => b.map(x => {
+      if (x.id !== blockId) return x;
+      const last = x.sets[x.sets.length - 1];
+      return { ...x, sets: [...x.sets, mkSet(last?.weightLbs ?? "", last?.reps ?? "")] };
+    }));
+  const removeSet = (blockId: number, setId: number) =>
+    setBlocks(b => b.map(x => x.id !== blockId ? x : { ...x, sets: x.sets.length > 1 ? x.sets.filter(s => s.id !== setId) : x.sets }));
 
-  const validRows = rows.filter(isRowValid);
-  const canSave = validRows.length > 0 && !mutation.isPending;
+  const markSetDone = (blockId: number, setId: number) => {
+    updateSet(blockId, setId, "done", true);
+    startRest();
+  };
 
-  const handleSave = () => {
-    if (!canSave) return;
+  // Save logic
+  const allSets = blocks.flatMap(b => b.sets.map(s => ({ ...s, exercise: b.exercise })));
+  const doneSets = allSets.filter(s => s.done && s.exercise.trim() && parseFloat(s.weightLbs) > 0 && parseInt(s.reps) > 0);
+  const incompleteSets = allSets.filter(s => !s.done && s.exercise.trim());
+  const hasIncompleteSets = incompleteSets.length > 0;
+
+  const doSave = () => {
+    if (doneSets.length === 0) return;
     setErrorMsg(null);
+    setShowIncompleteWarning(false);
+
+    // Group sets by exercise+weight+reps → send as batches
+    const grouped = new Map<string, { exercise: string; weightLbs: number; reps: number; count: number }>();
+    for (const s of doneSets) {
+      const key = `${s.exercise.trim()}|${s.weightLbs}|${s.reps}`;
+      if (grouped.has(key)) grouped.get(key)!.count++;
+      else grouped.set(key, { exercise: s.exercise.trim(), weightLbs: parseFloat(s.weightLbs), reps: parseInt(s.reps), count: 1 });
+    }
+
+    const durationMins = workoutStarted ? Math.round(elapsedSeconds / 60) : undefined;
 
     mutation.mutate(
       {
         data: {
           date,
-          exercises: validRows.map((r) => ({
-            exercise: r.exercise.trim(),
-            weightLbs: parseFloat(r.weightLbs),
-            reps: parseInt(r.reps, 10),
-            sets: parseInt(r.sets, 10),
-          })),
+          exercises: [...grouped.values()].map(g => ({ exercise: g.exercise, weightLbs: g.weightLbs, reps: g.reps, sets: g.count })),
           notes: notes.trim() || null,
           bodyWeightLbs: bodyWeightLbs ? parseFloat(bodyWeightLbs) : null,
-          durationMinutes: durationMinutes ? parseInt(durationMinutes, 10) : null,
+          durationMinutes: durationMins || null,
         },
       },
       {
         onSuccess: (result) => {
+          stopTimer();
           setSavedCount(result.inserted);
           setSavedCalories(result.caloriesBurned ?? null);
-          // Sync to Apple Health if calories available
-          if (result.caloriesBurned && durationMinutes) {
+          if (result.caloriesBurned && durationMins) {
             const endTime = new Date();
-            const startTime = new Date(endTime.getTime() - parseInt(durationMinutes, 10) * 60 * 1000);
-            saveWorkoutToHealthKit({
-              startDate: startTime,
-              endDate: endTime,
-              calories: result.caloriesBurned,
-            }).catch(console.error);
+            const startTime = new Date(endTime.getTime() - durationMins * 60 * 1000);
+            saveWorkoutToHealthKit({ startDate: startTime, endDate: endTime, calories: result.caloriesBurned }).catch(console.error);
           }
-          queryClient.invalidateQueries({
-            predicate: (q) =>
-              typeof q.queryKey[0] === "string" &&
-              String(q.queryKey[0]).startsWith("/api/workouts"),
-          });
+          queryClient.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && String(q.queryKey[0]).startsWith("/api/workouts") });
           if (result.bodyWeightLogged) {
-            queryClient.invalidateQueries({
-              predicate: (q) =>
-                typeof q.queryKey[0] === "string" &&
-                String(q.queryKey[0]).startsWith("/api/body-metrics"),
-            });
+            queryClient.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && String(q.queryKey[0]).startsWith("/api/body-metrics") });
           }
         },
-        onError: (err: unknown) => {
-          const msg =
-            err instanceof Error ? err.message : "Something went wrong. Please try again.";
-          setErrorMsg(msg);
-        },
-      },
+        onError: (err: unknown) => setErrorMsg(err instanceof Error ? err.message : "Something went wrong."),
+      }
     );
+  };
+
+  const handleSave = () => {
+    if (doneSets.length === 0) { setErrorMsg("Check off at least one set before saving."); return; }
+    if (hasIncompleteSets) { setShowIncompleteWarning(true); return; }
+    doSave();
+  };
+
+  const handleEndWorkout = () => {
+    stopTimer();
+    handleSave();
   };
 
   const handleSaveTemplate = () => {
     const name = templateName.trim();
-    if (!name || validRows.length === 0) return;
+    if (!name) return;
+    const validBlocks = blocks.filter(b => b.exercise.trim() && b.sets.some(s => parseFloat(s.weightLbs) > 0 && parseInt(s.reps) > 0));
+    if (validBlocks.length === 0) return;
     createTemplateMutation.mutate(
       {
         data: {
           name,
-          exercises: validRows.map((r, idx) => ({
-            exercise: r.exercise.trim(),
-            weightLbs: parseFloat(r.weightLbs),
-            reps: parseInt(r.reps, 10),
-            sets: parseInt(r.sets, 10),
-            order: idx,
-          })),
+          exercises: validBlocks.flatMap((b, bi) => {
+            const validSets = b.sets.filter(s => parseFloat(s.weightLbs) > 0 && parseInt(s.reps) > 0);
+            // group identical sets
+            const grouped = new Map<string, number>();
+            for (const s of validSets) {
+              const key = `${s.weightLbs}|${s.reps}`;
+              grouped.set(key, (grouped.get(key) ?? 0) + 1);
+            }
+            return [...grouped.entries()].map(([key, count], i) => {
+              const [w, r] = key.split("|");
+              return { exercise: b.exercise.trim(), weightLbs: parseFloat(w), reps: parseInt(r), sets: count, order: bi * 10 + i };
+            });
+          }),
         },
       },
       {
         onSuccess: () => {
           setSavingTemplate(false);
           setTemplateName("");
-          queryClient.invalidateQueries({
-            predicate: (q) =>
-              typeof q.queryKey[0] === "string" &&
-              String(q.queryKey[0]).startsWith("/api/workouts/templates"),
-          });
+          queryClient.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && String(q.queryKey[0]).startsWith("/api/workouts/templates") });
         },
-      },
+      }
     );
-  };
-
-  const handleLoadTemplate = (id: number) => {
-    setSelectedTemplateId(id);
-    setExpandedTemplateId(null);
   };
 
   const handleCardioSave = () => {
     if (!cardioDuration || cardioMutation.isPending) return;
     setErrorMsg(null);
+    const durationMins = workoutStarted ? Math.round(elapsedSeconds / 60) : parseInt(cardioDuration, 10);
     cardioMutation.mutate(
       {
         data: {
           date,
           exerciseType: cardioType,
-          durationMinutes: parseInt(cardioDuration, 10),
+          durationMinutes: durationMins,
           distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null,
           inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null,
           bodyWeightLbs: bodyWeightLbs ? parseFloat(bodyWeightLbs) : null,
@@ -277,36 +362,29 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
       },
       {
         onSuccess: (result) => {
+          stopTimer();
           setSavedCalories(result.caloriesBurned ?? null);
-          setSavedCount(0); // reuse success screen
-          if (result.caloriesBurned && cardioDuration) {
+          setSavedCount(0);
+          if (result.caloriesBurned && durationMins) {
             const endTime = new Date();
-            const startTime = new Date(endTime.getTime() - parseInt(cardioDuration, 10) * 60 * 1000);
-            saveWorkoutToHealthKit({
-              startDate: startTime,
-              endDate: endTime,
-              calories: result.caloriesBurned,
-              activityType: cardioType,
-            }).catch(console.error);
+            const startTime = new Date(endTime.getTime() - durationMins * 60 * 1000);
+            saveWorkoutToHealthKit({ startDate: startTime, endDate: endTime, calories: result.caloriesBurned, activityType: cardioType }).catch(console.error);
           }
-          queryClient.invalidateQueries({
-            predicate: (q) => typeof q.queryKey[0] === "string" && String(q.queryKey[0]).startsWith("/api/workouts"),
-          });
+          queryClient.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && String(q.queryKey[0]).startsWith("/api/workouts") });
         },
-        onError: (err: unknown) => {
-          setErrorMsg(err instanceof Error ? err.message : "Something went wrong.");
-        },
-      },
+        onError: (err: unknown) => setErrorMsg(err instanceof Error ? err.message : "Something went wrong."),
+      }
     );
   };
 
   const handleClose = () => {
+    stopTimer();
+    stopRest();
     setMode("strength");
     setDate(todayIso());
-    setRows([mkRow()]);
+    setBlocks([mkBlock()]);
     setNotes("");
     setBodyWeightLbs("");
-    setDurationMinutes("");
     setSavedCount(null);
     setSavedCalories(null);
     setErrorMsg(null);
@@ -314,7 +392,6 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
     setTemplateName("");
     setSelectedTemplateId(null);
     setExpandedTemplateId(null);
-    setTemplateDropdownOpen(false);
     setHistoryExercise(null);
     setCardioType("treadmill");
     setCardioDuration("");
@@ -322,31 +399,46 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
     setCardioIncline("");
     setSavingCardioTemplate(false);
     setCardioTemplateName("");
+    setTimerPrompt(false);
+    setWorkoutStarted(false);
+    setElapsedSeconds(0);
+    setRestSeconds(0);
+    setShowIncompleteWarning(false);
     mutation.reset();
     cardioMutation.reset();
     onClose();
   };
 
-  // When template data loads, fill rows
+  // Open → show timer prompt
+  useEffect(() => {
+    if (open && !workoutStarted && savedCount === null) {
+      setTimerPrompt(true);
+    }
+  }, [open]);
+
+  // Load template into blocks
   if (selectedTemplate && selectedTemplateId) {
-    const templateRows = selectedTemplate.exercises.map((ex) => ({
-      id: Date.now() + Math.random(),
-      exercise: ex.exercise,
-      weightLbs: String(ex.weightLbs),
-      reps: String(ex.reps),
-      sets: String(ex.sets),
-    }));
-    if (templateRows.length > 0 && rows.length === 1 && !rows[0].exercise) {
-      setRows(templateRows);
+    const newBlocks: ExerciseBlock[] = [];
+    for (const ex of selectedTemplate.exercises) {
+      const existing = newBlocks.find(b => b.exercise.toLowerCase() === ex.exercise.toLowerCase());
+      if (existing) {
+        for (let i = 0; i < ex.sets; i++) existing.sets.push(mkSet(String(ex.weightLbs), String(ex.reps)));
+      } else {
+        const sets = Array.from({ length: ex.sets }, () => mkSet(String(ex.weightLbs), String(ex.reps)));
+        newBlocks.push({ id: Date.now() + Math.random(), exercise: ex.exercise, sets });
+      }
+    }
+    if (newBlocks.length > 0 && blocks.length === 1 && !blocks[0].exercise) {
+      setBlocks(newBlocks);
       setSelectedTemplateId(null);
     }
   }
 
-  // Apply initial template passed from Templates modal
-  if (initialStrengthTemplateId && !selectedTemplateId && rows.length === 1 && !rows[0].exercise) {
+  // Apply initial template from Templates modal
+  if (initialStrengthTemplateId && !selectedTemplateId && blocks.length === 1 && !blocks[0].exercise) {
     setSelectedTemplateId(initialStrengthTemplateId);
   }
-  if (initialCardioTemplate && mode === "strength" && rows.length === 1 && !rows[0].exercise) {
+  if (initialCardioTemplate && mode === "strength" && blocks.length === 1 && !blocks[0].exercise) {
     setMode("cardio");
     setCardioType(initialCardioTemplate.exerciseType as CardioExerciseType);
     setCardioDuration(String(initialCardioTemplate.durationMinutes));
@@ -357,570 +449,453 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
   return (
     <>
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg bg-card border-border text-foreground max-h-[90vh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="text-xl font-bold">Log Workout</DialogTitle>
-          <DialogDescription className="text-muted-foreground">
-            Record a training session directly — no CSV needed.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-lg bg-card border-border text-foreground max-h-[92vh] flex flex-col p-0 overflow-hidden">
 
-        {savedCount !== null ? (
-          <div className="flex flex-col items-center gap-4 py-6 text-center">
+        {/* Header */}
+        <div className="flex-shrink-0 px-6 pt-6 pb-3 border-b border-border">
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-xl font-bold">Log Workout</DialogTitle>
+              <DialogDescription className="text-muted-foreground text-sm mt-0.5">
+                Record a training session directly.
+              </DialogDescription>
+            </div>
+            {workoutStarted && savedCount === null && (
+              <div className="flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-lg px-3 py-1.5">
+                <Timer className="w-4 h-4 text-primary" />
+                <span className="text-primary font-mono font-semibold text-sm">{formatElapsed(elapsedSeconds)}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Rest timer bar */}
+          {restSeconds > 0 && (
+            <div className="mt-3 flex items-center gap-3 bg-muted/60 rounded-lg px-3 py-2">
+              <Timer className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-muted-foreground">Rest timer</span>
+                  <span className="text-sm font-mono font-semibold">{formatElapsed(restSeconds)}</span>
+                </div>
+                <div className="w-full bg-border rounded-full h-1.5">
+                  <div className="bg-primary h-1.5 rounded-full transition-all duration-1000" style={{ width: `${(restSeconds / restDefault) * 100}%` }} />
+                </div>
+              </div>
+              <button type="button" onClick={stopRest} className="text-muted-foreground hover:text-foreground shrink-0"><X className="w-4 h-4" /></button>
+            </div>
+          )}
+        </div>
+
+        {/* Timer prompt overlay */}
+        {timerPrompt && savedCount === null && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-8 text-center">
+            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+              <Timer className="w-7 h-7 text-primary" />
+            </div>
+            <div>
+              <p className="text-lg font-semibold">Start workout timer?</p>
+              <p className="text-sm text-muted-foreground mt-1">Tracks duration for calorie calculation.</p>
+            </div>
+            <div className="flex gap-3 w-full max-w-xs">
+              <Button variant="outline" className="flex-1 border-border" onClick={() => setTimerPrompt(false)}>Skip</Button>
+              <Button className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => { startTimer(); setTimerPrompt(false); }}>
+                <Play className="w-4 h-4 mr-1.5" /> Start
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Incomplete sets warning */}
+        {showIncompleteWarning && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-8 text-center">
+            <div className="w-14 h-14 rounded-full bg-yellow-500/10 flex items-center justify-center">
+              <AlertTriangle className="w-7 h-7 text-yellow-500" />
+            </div>
+            <div>
+              <p className="text-lg font-semibold">Incomplete sets</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {incompleteSets.length} set{incompleteSets.length !== 1 ? "s" : ""} haven't been checked off. Save with only the completed sets?
+              </p>
+            </div>
+            <div className="flex gap-3 w-full max-w-xs">
+              <Button variant="outline" className="flex-1 border-border" onClick={() => setShowIncompleteWarning(false)}>Go back</Button>
+              <Button className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={doSave}>
+                Save {doneSets.length} set{doneSets.length !== 1 ? "s" : ""}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Success screen */}
+        {savedCount !== null && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 py-6 px-6 text-center">
             <CheckCircle2 className="w-12 h-12 text-primary" />
             <div>
               <p className="text-lg font-semibold">Session saved!</p>
               <p className="text-muted-foreground text-sm mt-1">
-                {savedCount > 0
-                  ? `${savedCount} set${savedCount !== 1 ? "s" : ""} logged for ${date}. Charts updated.`
-                  : `Cardio session logged for ${date}.`}
+                {savedCount > 0 ? `${savedCount} set${savedCount !== 1 ? "s" : ""} logged for ${date}.` : `Cardio session logged for ${date}.`}
               </p>
-              {savedCalories !== null && (
-                <p className="text-orange-400 text-sm mt-2 font-medium">
-                  🔥 ~{savedCalories} calories burned
-                </p>
-              )}
+              {savedCalories !== null && <p className="text-orange-400 text-sm mt-2 font-medium">🔥 ~{savedCalories} calories burned</p>}
             </div>
-            <Button onClick={handleClose} className="mt-2 bg-primary hover:bg-primary/90 text-primary-foreground">
-              Done
-            </Button>
+            <Button onClick={handleClose} className="mt-2 bg-primary hover:bg-primary/90 text-primary-foreground">Done</Button>
           </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
-            <div className="space-y-1.5">
-              <Label htmlFor="workout-date" className="text-sm font-medium">Date</Label>
-              <Input
-                id="workout-date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="bg-background border-border text-foreground [color-scheme:dark]"
-              />
-            </div>
+        )}
 
-            {/* Mode toggle */}
-            <div className="flex rounded-lg border border-border overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setMode("strength")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium transition-colors ${mode === "strength" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
-              >
-                <Dumbbell className="w-4 h-4" /> Strength
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("cardio")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium transition-colors ${mode === "cardio" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
-              >
-                <Heart className="w-4 h-4" /> Cardio
-              </button>
-            </div>
+        {/* Main form */}
+        {!timerPrompt && !showIncompleteWarning && savedCount === null && (
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="space-y-4 px-6 py-4">
+              {/* Date */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Date</Label>
+                <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-background border-border text-foreground [color-scheme:dark]" />
+              </div>
 
-            {mode === "cardio" && (
-              <div className="space-y-3">
-                {cardioTemplates.length > 0 && (
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Load template</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {cardioTemplates.map((t) => (
-                        <div key={t.id} className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCardioType(t.exerciseType as CardioExerciseType);
-                              setCardioDuration(String(t.durationMinutes));
-                              setCardioDistance(t.distanceMiles != null ? String(t.distanceMiles) : "");
-                              setCardioIncline(t.inclinePercent != null ? String(t.inclinePercent) : "");
-                            }}
-                            className="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-colors"
-                          >
-                            {t.name}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteCardioTemplateMutation.mutate({ id: t.id }, { onSuccess: () => queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).includes("cardio-templates") }) })}
-                            className="text-muted-foreground hover:text-destructive transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium">Type</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {CARDIO_TYPES.map((t) => (
-                      <button
-                        key={t.value}
-                        type="button"
-                        onClick={() => setCardioType(t.value)}
-                        className={`py-2 px-3 rounded-md text-sm font-medium border transition-colors ${cardioType === t.value ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground hover:border-primary"}`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Duration (min)</Label>
-                    <Input
-                      type="number" min="1" step="1"
-                      value={cardioDuration}
-                      onChange={(e) => setCardioDuration(e.target.value)}
-                      placeholder="30"
-                      className="bg-background border-border text-foreground"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Distance (mi) <span className="text-muted-foreground font-normal">optional</span></Label>
-                    <Input
-                      type="number" min="0" step="0.1"
-                      value={cardioDistance}
-                      onChange={(e) => setCardioDistance(e.target.value)}
-                      placeholder="2.5"
-                      className="bg-background border-border text-foreground"
-                    />
-                  </div>
-                  {cardioType === "treadmill" && (
+              {/* Mode toggle */}
+              <div className="flex rounded-lg border border-border overflow-hidden">
+                <button type="button" onClick={() => setMode("strength")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium transition-colors ${mode === "strength" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>
+                  <Dumbbell className="w-4 h-4" /> Strength
+                </button>
+                <button type="button" onClick={() => setMode("cardio")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium transition-colors ${mode === "cardio" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>
+                  <Heart className="w-4 h-4" /> Cardio
+                </button>
+              </div>
+
+              {/* ── CARDIO FORM ── */}
+              {mode === "cardio" && (
+                <div className="space-y-3">
+                  {cardioTemplates.length > 0 && (
                     <div className="space-y-1.5">
-                      <Label className="text-sm font-medium">Incline (%) <span className="text-muted-foreground font-normal">optional</span></Label>
-                      <Input
-                        type="number" min="0" max="30" step="0.5"
-                        value={cardioIncline}
-                        onChange={(e) => setCardioIncline(e.target.value)}
-                        placeholder="2.0"
-                        className="bg-background border-border text-foreground"
-                      />
+                      <Label className="text-sm font-medium">Load template</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {cardioTemplates.map(t => (
+                          <div key={t.id} className="flex items-center gap-1">
+                            <button type="button" onClick={() => { setCardioType(t.exerciseType as CardioExerciseType); setCardioDuration(String(t.durationMinutes)); setCardioDistance(t.distanceMiles != null ? String(t.distanceMiles) : ""); setCardioIncline(t.inclinePercent != null ? String(t.inclinePercent) : ""); }}
+                              className="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-colors">{t.name}</button>
+                            <button type="button" onClick={() => deleteCardioTemplateMutation.mutate({ id: t.id }, { onSuccess: () => queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).includes("cardio-templates") }) })} className="text-muted-foreground hover:text-destructive">
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Body weight (lbs) <span className="text-muted-foreground font-normal">optional</span></Label>
-                    <Input
-                      type="number" min="0" step="0.1"
-                      value={bodyWeightLbs}
-                      onChange={(e) => setBodyWeightLbs(e.target.value)}
-                      placeholder="175"
-                      className="bg-background border-border text-foreground"
-                    />
+                    <Label className="text-sm font-medium">Type</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {CARDIO_TYPES.map(t => (
+                        <button key={t.value} type="button" onClick={() => setCardioType(t.value)}
+                          className={`py-2 px-3 rounded-md text-sm font-medium border transition-colors ${cardioType === t.value ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground hover:border-primary"}`}>
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium">Duration (min)</Label>
+                      <Input type="number" min="1" value={cardioDuration} onChange={e => setCardioDuration(e.target.value)} placeholder="30" className="bg-background border-border text-foreground" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium">Distance (mi) <span className="text-muted-foreground font-normal">optional</span></Label>
+                      <Input type="number" min="0" step="0.1" value={cardioDistance} onChange={e => setCardioDistance(e.target.value)} placeholder="2.5" className="bg-background border-border text-foreground" />
+                    </div>
+                    {cardioType === "treadmill" && (
+                      <div className="space-y-1.5">
+                        <Label className="text-sm font-medium">Incline (%) <span className="text-muted-foreground font-normal">optional</span></Label>
+                        <Input type="number" min="0" max="30" step="0.5" value={cardioIncline} onChange={e => setCardioIncline(e.target.value)} placeholder="2.0" className="bg-background border-border text-foreground" />
+                      </div>
+                    )}
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium">Body weight (lbs) <span className="text-muted-foreground font-normal">optional</span></Label>
+                      <Input type="number" min="0" step="0.1" value={bodyWeightLbs} onChange={e => setBodyWeightLbs(e.target.value)} placeholder="175" className="bg-background border-border text-foreground" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Notes <span className="text-muted-foreground font-normal">optional</span></Label>
+                    <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="How did it feel?" rows={2} className="bg-background border-border text-foreground resize-none text-sm" />
+                  </div>
+                  {cardioDuration && !savingCardioTemplate && (
+                    <button type="button" onClick={() => setSavingCardioTemplate(true)} className="w-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary text-xs py-1.5 rounded-md transition-colors flex items-center justify-center gap-1.5">
+                      <BookmarkPlus className="w-3.5 h-3.5" /> Save as template
+                    </button>
+                  )}
+                  {savingCardioTemplate && (
+                    <div className="flex gap-2">
+                      <Input value={cardioTemplateName} onChange={e => setCardioTemplateName(e.target.value)} placeholder="Template name" className="bg-background border-border text-foreground text-sm" autoFocus
+                        onKeyDown={e => {
+                          if (e.key === "Escape") { setSavingCardioTemplate(false); setCardioTemplateName(""); }
+                          if (e.key === "Enter" && cardioTemplateName.trim()) createCardioTemplateMutation.mutate({ data: { name: cardioTemplateName.trim(), exerciseType: cardioType, durationMinutes: parseInt(cardioDuration), distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null, inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null } }, { onSuccess: () => { setSavingCardioTemplate(false); setCardioTemplateName(""); queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).includes("cardio-templates") }); } });
+                        }} />
+                      <Button size="sm" onClick={() => { if (!cardioTemplateName.trim()) return; createCardioTemplateMutation.mutate({ data: { name: cardioTemplateName.trim(), exerciseType: cardioType, durationMinutes: parseInt(cardioDuration), distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null, inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null } }, { onSuccess: () => { setSavingCardioTemplate(false); setCardioTemplateName(""); queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).includes("cardio-templates") }); } }); }} disabled={!cardioTemplateName.trim()} className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0">Save</Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setSavingCardioTemplate(false); setCardioTemplateName(""); }} className="shrink-0">Cancel</Button>
+                    </div>
+                  )}
+                  {errorMsg && <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{errorMsg}</p>}
+                  <div className="flex gap-3 pt-1">
+                    <Button variant="outline" className="flex-1 border-border" onClick={handleClose} disabled={cardioMutation.isPending}>Cancel</Button>
+                    {workoutStarted ? (
+                      <Button className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold" onClick={() => { stopTimer(); handleCardioSave(); }} disabled={!cardioDuration || cardioMutation.isPending}>
+                        {cardioMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</> : <><Square className="w-4 h-4 mr-1.5" />End Workout</>}
+                      </Button>
+                    ) : (
+                      <Button className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold" onClick={handleCardioSave} disabled={!cardioDuration || cardioMutation.isPending}>
+                        {cardioMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</> : "Save Session"}
+                      </Button>
+                    )}
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium">Notes <span className="text-muted-foreground font-normal">optional</span></Label>
-                  <Textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="How did it feel?"
-                    rows={2}
-                    className="bg-background border-border text-foreground resize-none text-sm"
-                  />
-                </div>
-                {cardioDuration && !savingCardioTemplate && (
-                  <button
-                    type="button"
-                    onClick={() => setSavingCardioTemplate(true)}
-                    className="w-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary text-xs py-1.5 rounded-md transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <BookmarkPlus className="w-3.5 h-3.5" /> Save as template
-                  </button>
-                )}
-                {savingCardioTemplate && (
-                  <div className="flex gap-2">
-                    <Input
-                      value={cardioTemplateName}
-                      onChange={(e) => setCardioTemplateName(e.target.value)}
-                      placeholder="Template name (e.g. Morning Run)"
-                      className="bg-background border-border text-foreground text-sm"
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") { setSavingCardioTemplate(false); setCardioTemplateName(""); }
-                        if (e.key === "Enter" && cardioTemplateName.trim()) {
-                          createCardioTemplateMutation.mutate(
-                            { data: { name: cardioTemplateName.trim(), exerciseType: cardioType, durationMinutes: parseInt(cardioDuration, 10), distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null, inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null } },
-                            { onSuccess: () => { setSavingCardioTemplate(false); setCardioTemplateName(""); queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).includes("cardio-templates") }); } }
-                          );
-                        }
-                      }}
-                    />
-                    <Button size="sm" onClick={() => {
-                      if (!cardioTemplateName.trim()) return;
-                      createCardioTemplateMutation.mutate(
-                        { data: { name: cardioTemplateName.trim(), exerciseType: cardioType, durationMinutes: parseInt(cardioDuration, 10), distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null, inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null } },
-                        { onSuccess: () => { setSavingCardioTemplate(false); setCardioTemplateName(""); queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).includes("cardio-templates") }); } }
-                      );
-                    }} disabled={!cardioTemplateName.trim()} className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0">Save</Button>
-                    <Button size="sm" variant="ghost" onClick={() => { setSavingCardioTemplate(false); setCardioTemplateName(""); }} className="shrink-0">Cancel</Button>
-                  </div>
-                )}
-                {errorMsg && (
-                  <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{errorMsg}</p>
-                )}
-                <div className="flex gap-3 pt-1">
-                  <Button variant="outline" className="flex-1 border-border" onClick={handleClose} disabled={cardioMutation.isPending}>Cancel</Button>
-                  <Button
-                    className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-                    onClick={handleCardioSave}
-                    disabled={!cardioDuration || cardioMutation.isPending}
-                  >
-                    {cardioMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</> : "Save Session"}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {mode === "strength" && <><div className="space-y-2">
-              {lastSession && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setRows(
-                      lastSession.exercises.map((ex) => ({
-                        id: Date.now() + Math.random(),
-                        exercise: ex.exercise,
-                        weightLbs: String(ex.weightLbs),
-                        reps: String(ex.reps),
-                        sets: String(ex.sets),
-                      })),
-                    )
-                  }
-                  className="w-full border-dashed border-primary/50 text-primary hover:bg-primary/10 gap-2 text-xs"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  Repeat last session ({lastSession.date})
-                </Button>
               )}
 
-              {templates.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Saved templates</p>
-                  <div className="flex flex-col gap-2">
-                    {templates.map((t) => {
-                      const isExpanded = expandedTemplateId === t.id;
-                      return (
-                        <div key={t.id} className="rounded-lg border border-border bg-background/50 overflow-hidden">
-                          <div className="flex items-center gap-2 px-3 py-2.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newExpanded = isExpanded ? null : t.id;
-                                setExpandedTemplateId(newExpanded);
-                                if (newExpanded) setSelectedTemplateId(t.id);
-                              }}
-                              className="flex-1 text-left flex items-center gap-2 min-w-0"
-                            >
-                              <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                              <span className="text-sm font-medium truncate">{t.name}</span>
-                            </button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => handleLoadTemplate(t.id)}
-                              className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs h-7 px-3 shrink-0"
-                            >
-                              Use
-                            </Button>
-                            <button
-                              type="button"
-                              onClick={() => deleteTemplateMutation.mutate({ id: t.id }, {
-                                onSuccess: () => {
-                                  if (expandedTemplateId === t.id) setExpandedTemplateId(null);
-                                  queryClient.invalidateQueries({
-                                    predicate: (q) => String(q.queryKey[0]).includes("/api/workouts/templates"),
-                                  });
-                                },
-                              })}
-                              className="text-muted-foreground hover:text-destructive transition-colors shrink-0 ml-1"
-                              aria-label="Delete template"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          {isExpanded && selectedTemplate && selectedTemplate.id === t.id && (
-                            <div className="border-t border-border px-3 py-2 space-y-1">
-                              {selectedTemplate.exercises.map((ex) => (
-                                <div key={ex.id} className="flex justify-between text-xs text-muted-foreground">
-                                  <span>{ex.exercise}</span>
-                                  <span>{ex.sets} × {ex.reps} @ {ex.weightLbs} lbs</span>
+              {/* ── STRENGTH FORM ── */}
+              {mode === "strength" && (
+                <>
+                  {/* Templates */}
+                  <div className="space-y-2">
+                    {lastSession && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => {
+                        const newBlocks: ExerciseBlock[] = [];
+                        for (const ex of lastSession.exercises) {
+                          const existing = newBlocks.find(b => b.exercise.toLowerCase() === ex.exercise.toLowerCase());
+                          if (existing) { for (let i = 0; i < ex.sets; i++) existing.sets.push(mkSet(String(ex.weightLbs), String(ex.reps))); }
+                          else newBlocks.push({ id: Date.now() + Math.random(), exercise: ex.exercise, sets: Array.from({ length: ex.sets }, () => mkSet(String(ex.weightLbs), String(ex.reps))) });
+                        }
+                        setBlocks(newBlocks);
+                      }} className="w-full border-dashed border-primary/50 text-primary hover:bg-primary/10 gap-2 text-xs">
+                        <RotateCcw className="w-3.5 h-3.5" /> Repeat last session ({lastSession.date})
+                      </Button>
+                    )}
+                    {templates.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Saved templates</p>
+                        <div className="flex flex-col gap-2">
+                          {templates.map(t => {
+                            const isExpanded = expandedTemplateId === t.id;
+                            return (
+                              <div key={t.id} className="rounded-lg border border-border bg-background/50 overflow-hidden">
+                                <div className="flex items-center gap-2 px-3 py-2.5">
+                                  <button type="button" onClick={() => { const next = isExpanded ? null : t.id; setExpandedTemplateId(next); if (next) setSelectedTemplateId(t.id); }} className="flex-1 text-left flex items-center gap-2 min-w-0">
+                                    <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                                    <span className="text-sm font-medium truncate">{t.name}</span>
+                                  </button>
+                                  <Button type="button" size="sm" onClick={() => { setSelectedTemplateId(t.id); setExpandedTemplateId(null); }} className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs h-7 px-3 shrink-0">Use</Button>
+                                  <button type="button" onClick={() => deleteTemplateMutation.mutate({ id: t.id }, { onSuccess: () => { if (expandedTemplateId === t.id) setExpandedTemplateId(null); queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).includes("/api/workouts/templates") }); } })} className="text-muted-foreground hover:text-destructive transition-colors shrink-0 ml-1">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
                                 </div>
-                              ))}
+                                {isExpanded && selectedTemplate && selectedTemplate.id === t.id && (
+                                  <div className="border-t border-border px-3 py-2 space-y-1">
+                                    {selectedTemplate.exercises.map(ex => (
+                                      <div key={ex.id} className="flex justify-between text-xs text-muted-foreground">
+                                        <span>{ex.exercise}</span><span>{ex.sets} × {ex.reps} @ {ex.weightLbs} lbs</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Rest timer default setting */}
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <Timer className="w-3.5 h-3.5" />
+                      <span>Rest timer default:</span>
+                      {editingRestDefault ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number" min="10" max="600" value={restDefaultInput}
+                            onChange={e => setRestDefaultInput(e.target.value)}
+                            className="w-14 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                            onBlur={() => {
+                              const v = parseInt(restDefaultInput);
+                              if (v > 0) { setRestDefault(v); localStorage.setItem(REST_TIMER_KEY, String(v)); }
+                              setEditingRestDefault(false);
+                            }}
+                            onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setRestDefaultInput(String(restDefault)); setEditingRestDefault(false); } }}
+                            autoFocus
+                          />
+                          <span>sec</span>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => setEditingRestDefault(true)} className="underline underline-offset-2 hover:text-foreground transition-colors">{restDefault}s</button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Exercise blocks */}
+                  <div className="space-y-4">
+                    {blocks.map((block, blockIdx) => {
+                      const exKey = block.exercise.toLowerCase().trim();
+                      const prLbs = prMap.get(exKey);
+                      const suggestion = exKey.length > 0 ? suggestionMap.get(exKey) : undefined;
+                      const lastEx = lastSessionMap.get(exKey);
+                      const currentOneRmPr = currentOneRmPrMap.get(exKey);
+
+                      return (
+                        <div key={block.id} className="rounded-lg border border-border bg-background/30 overflow-hidden">
+                          {/* Exercise name header */}
+                          <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+                            <div className="flex-1">
+                              <input
+                                list="exercise-list"
+                                value={block.exercise}
+                                onChange={e => updateBlockExercise(block.id, e.target.value)}
+                                placeholder="Exercise name (e.g. Bench Press)"
+                                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                              />
+                              <datalist id="exercise-list">
+                                {exerciseList.map(ex => <option key={ex} value={ex} />)}
+                              </datalist>
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              {exKey.length > 0 && (
+                                <button type="button" onClick={() => setHistoryExercise(block.exercise.trim())} className="text-muted-foreground hover:text-primary transition-colors p-1" aria-label="View history">
+                                  <BarChart2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button type="button" onClick={() => removeBlock(block.id)} disabled={blocks.length === 1} className="text-muted-foreground hover:text-destructive disabled:opacity-30 transition-colors p-1">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Suggestion / last session hint */}
+                          {(suggestion || lastEx) && (
+                            <div className="px-3 pb-1.5 flex items-center gap-3 text-xs">
+                              {lastEx && <span className="text-muted-foreground">Last: {lastEx.weightLbs} lbs × {lastEx.reps}</span>}
+                              {suggestion?.reason === "Ready to increase" && <span className="text-green-500 font-medium">💡 Try +{Math.round((suggestion.suggestedWeightLbs - suggestion.currentWeightLbs) * 10) / 10} lbs</span>}
+                              {suggestion?.reason === "Too heavy" && <span className="text-yellow-500 font-medium">⬇ Try -{Math.round((suggestion.currentWeightLbs - suggestion.suggestedWeightLbs) * 10) / 10} lbs</span>}
                             </div>
                           )}
+
+                          {/* Set rows */}
+                          <div className="px-3 pb-2 space-y-1.5">
+                            <div className="grid grid-cols-[28px_1fr_1fr_36px] gap-1.5 text-xs font-medium text-muted-foreground px-0.5">
+                              <span></span><span>Weight (lbs)</span><span>Reps</span><span></span>
+                            </div>
+                            {block.sets.map((set, setIdx) => {
+                              const enteredWeight = parseFloat(set.weightLbs);
+                              const enteredReps = parseInt(set.reps);
+                              const isWeightPr = prLbs !== undefined && enteredWeight > prLbs && !isNaN(enteredWeight);
+                              const estimatedOneRmNow = !isNaN(enteredWeight) && !isNaN(enteredReps) && enteredWeight > 0 && enteredReps > 0 ? Math.round(enteredWeight * (1 + enteredReps / 30) * 10) / 10 : null;
+                              const isOneRmPr = estimatedOneRmNow !== null && currentOneRmPr !== undefined && estimatedOneRmNow > currentOneRmPr;
+
+                              return (
+                                <div key={set.id}>
+                                  <div className={`grid grid-cols-[28px_1fr_1fr_36px] gap-1.5 items-center rounded-md px-0.5 py-0.5 transition-colors ${set.done ? "opacity-50" : ""}`}>
+                                    {/* Set number / done indicator */}
+                                    <button
+                                      type="button"
+                                      onClick={() => set.done ? updateSet(block.id, set.id, "done", false) : markSetDone(block.id, set.id)}
+                                      disabled={!set.weightLbs || !set.reps}
+                                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors disabled:opacity-30 ${set.done ? "bg-primary border-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary hover:text-primary"}`}
+                                    >
+                                      {set.done ? <Check className="w-3.5 h-3.5" /> : setIdx + 1}
+                                    </button>
+                                    <div className="relative">
+                                      <Input
+                                        type="number" min="0" step="0.5"
+                                        value={set.weightLbs}
+                                        onChange={e => updateSet(block.id, set.id, "weightLbs", e.target.value)}
+                                        placeholder="135"
+                                        disabled={set.done}
+                                        className={`bg-background border-border text-foreground text-sm ${isWeightPr ? "border-yellow-500/70 pr-6" : ""}`}
+                                      />
+                                      {isWeightPr && !set.done && <Trophy className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-yellow-500" />}
+                                    </div>
+                                    <Input
+                                      type="number" min="1"
+                                      value={set.reps}
+                                      onChange={e => updateSet(block.id, set.id, "reps", e.target.value)}
+                                      placeholder="10"
+                                      disabled={set.done}
+                                      className="bg-background border-border text-foreground text-sm"
+                                    />
+                                    <button type="button" onClick={() => removeSet(block.id, set.id)} disabled={block.sets.length === 1} className="text-muted-foreground hover:text-destructive disabled:opacity-30 transition-colors flex justify-center">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                  {isOneRmPr && set.done && (
+                                    <p className="text-yellow-500 text-xs font-semibold flex items-center gap-1 px-8 -mt-0.5">
+                                      <Trophy className="w-3 h-3" /> New est. 1RM: {estimatedOneRmNow} lbs
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            <button type="button" onClick={() => addSet(block.id)} className="w-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary text-xs py-1 rounded-md transition-colors flex items-center justify-center gap-1 mt-1">
+                              <Plus className="w-3 h-3" /> Add set
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
-                </div>
-              )}
-            </div>
 
-            <div className="space-y-2">
-              <div className="grid grid-cols-[1fr_80px_56px_56px_52px] gap-2 text-xs font-medium text-muted-foreground px-0.5">
-                <span>Exercise</span>
-                <span>Weight (lbs)</span>
-                <span>Reps</span>
-                <span>Sets</span>
-                <span />
-              </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={addBlock} className="w-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary">
+                    <Plus className="w-4 h-4 mr-1.5" /> Add exercise
+                  </Button>
 
-              {rows.map((row) => {
-                const exKey = row.exercise.toLowerCase().trim();
-                const prLbs = prMap.get(exKey);
-                const enteredWeight = parseFloat(row.weightLbs);
-                const enteredReps = parseInt(row.reps, 10);
-                const isWeightPr = prLbs !== undefined && enteredWeight > prLbs && !isNaN(enteredWeight);
-                const estimatedOneRmNow = !isNaN(enteredWeight) && !isNaN(enteredReps) && enteredWeight > 0 && enteredReps > 0
-                  ? Math.round(enteredWeight * (1 + enteredReps / 30) * 10) / 10
-                  : null;
-                const currentOneRmPr = currentOneRmPrMap.get(exKey);
-                const isOneRmPr = estimatedOneRmNow !== null && currentOneRmPr !== undefined && estimatedOneRmNow > currentOneRmPr;
-                const lastEx = lastSessionMap.get(exKey);
-                const weightDelta = lastEx && !isNaN(enteredWeight) && enteredWeight > 0
-                  ? Math.round((enteredWeight - lastEx.weightLbs) * 10) / 10
-                  : null;
-                const suggestion = exKey.length > 0 ? suggestionMap.get(exKey) : undefined;
-
-                return (
-                  <div key={row.id} className="space-y-1">
-                    <div className="grid grid-cols-[1fr_80px_56px_56px_52px] gap-2 items-center">
-                      <div>
-                        <input
-                          list="exercise-list"
-                          value={row.exercise}
-                          onChange={(e) => updateRow(row.id, "exercise", e.target.value)}
-                          placeholder="e.g. Bench Press"
-                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
-                        <datalist id="exercise-list">
-                          {exerciseList.map((ex) => (
-                            <option key={ex} value={ex} />
-                          ))}
-                        </datalist>
-                      </div>
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.5"
-                          value={row.weightLbs}
-                          onChange={(e) => updateRow(row.id, "weightLbs", e.target.value)}
-                          placeholder="135"
-                          className={`bg-background border-border text-foreground ${isWeightPr ? "border-yellow-500/70 pr-6" : ""}`}
-                        />
-                        {isWeightPr && (
-                          <Trophy className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-yellow-500" />
-                        )}
-                      </div>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={row.reps}
-                        onChange={(e) => updateRow(row.id, "reps", e.target.value)}
-                        placeholder="10"
-                        className="bg-background border-border text-foreground"
-                      />
-                      <Input
-                        type="number"
-                        min="1"
-                        value={row.sets}
-                        onChange={(e) => updateRow(row.id, "sets", e.target.value)}
-                        placeholder="3"
-                        className="bg-background border-border text-foreground"
-                      />
-                      <div className="flex gap-1 justify-end">
-                        {exKey.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setHistoryExercise(row.exercise.trim())}
-                            className="text-muted-foreground hover:text-primary transition-colors"
-                            aria-label="View exercise history"
-                          >
-                            <BarChart2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => removeRow(row.id)}
-                          disabled={rows.length === 1}
-                          className="flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-30 transition-colors"
-                          aria-label="Remove exercise"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                  {/* Body weight + notes */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium">Body weight (lbs) <span className="text-muted-foreground font-normal">optional</span></Label>
+                      <Input type="number" min="0" step="0.1" value={bodyWeightLbs} onChange={e => setBodyWeightLbs(e.target.value)} placeholder="175" className="bg-background border-border text-foreground" />
                     </div>
-                    {(lastEx || isOneRmPr) && (
-                      <div className="flex items-center gap-3 px-1 text-xs">
-                        {lastEx && (
-                          <span className="text-muted-foreground">
-                            Last: {lastEx.weightLbs} lbs × {lastEx.reps}
-                            {weightDelta !== null && weightDelta !== 0 && (
-                              <span className={`ml-1 font-semibold ${weightDelta > 0 ? "text-green-500" : "text-red-400"}`}>
-                                ({weightDelta > 0 ? "+" : ""}{weightDelta} lbs)
-                              </span>
-                            )}
-                          </span>
-                        )}
-                        {isOneRmPr && (
-                          <span className="text-yellow-500 font-semibold flex items-center gap-1">
-                            <Trophy className="w-3 h-3" />
-                            New est. 1RM: {estimatedOneRmNow} lbs
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {suggestion && (
-                      <div className="px-1 text-xs">
-                        {suggestion.reason === "Ready to increase" && (
-                          <span className="inline-flex items-center gap-1 text-green-500 font-medium">
-                            💡 +{Math.round((suggestion.suggestedWeightLbs - suggestion.currentWeightLbs) * 10) / 10} lbs suggested
-                          </span>
-                        )}
-                        {suggestion.reason === "Too heavy" && (
-                          <span className="inline-flex items-center gap-1 text-yellow-500 font-medium">
-                            ⬇ -{Math.round((suggestion.currentWeightLbs - suggestion.suggestedWeightLbs) * 10) / 10} lbs suggested
-                          </span>
-                        )}
-                        {suggestion.reason === "Keep going" && (
-                          <span className="inline-flex items-center gap-1 text-muted-foreground">
-                            ✓ Hold — keep current weight
-                          </span>
-                        )}
-                      </div>
+                    <div className="space-y-1.5 col-span-2">
+                      <Label className="text-sm font-medium">Notes <span className="text-muted-foreground font-normal">optional</span></Label>
+                      <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="How did it feel? Any PRs or injuries?" rows={2} className="bg-background border-border text-foreground resize-none text-sm" />
+                    </div>
+                  </div>
+
+                  {/* Save template */}
+                  {!savingTemplate && (
+                    <button type="button" onClick={() => setSavingTemplate(true)} className="w-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary text-xs py-1.5 rounded-md transition-colors flex items-center justify-center gap-1.5">
+                      <BookmarkPlus className="w-3.5 h-3.5 mr-1.5" /> Save as template
+                    </button>
+                  )}
+                  {savingTemplate && (
+                    <div className="flex gap-2">
+                      <Input value={templateName} onChange={e => setTemplateName(e.target.value)} placeholder="Template name (e.g. Push Day A)" className="bg-background border-border text-foreground text-sm"
+                        onKeyDown={e => { if (e.key === "Enter") handleSaveTemplate(); if (e.key === "Escape") { setSavingTemplate(false); setTemplateName(""); } }} autoFocus />
+                      <Button size="sm" onClick={handleSaveTemplate} disabled={!templateName.trim() || createTemplateMutation.isPending} className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0">
+                        {createTemplateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setSavingTemplate(false); setTemplateName(""); }} className="shrink-0">Cancel</Button>
+                    </div>
+                  )}
+
+                  {errorMsg && <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{errorMsg}</p>}
+
+                  {/* Action buttons */}
+                  <div className="flex gap-3 pt-1 pb-2">
+                    <Button variant="outline" className="flex-1 border-border text-foreground hover:bg-muted" onClick={handleClose} disabled={mutation.isPending}>Cancel</Button>
+                    {workoutStarted ? (
+                      <Button className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold" onClick={handleEndWorkout} disabled={mutation.isPending}>
+                        {mutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</> : <><Square className="w-4 h-4 mr-1.5" />End Workout</>}
+                      </Button>
+                    ) : (
+                      <Button className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold" onClick={handleSave} disabled={mutation.isPending}>
+                        {mutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</> : "Save Session"}
+                      </Button>
                     )}
                   </div>
-                );
-              })}
-
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={addRow}
-                className="w-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary mt-1"
-              >
-                <Plus className="w-4 h-4 mr-1.5" />
-                Add exercise
-              </Button>
+                </>
+              )}
             </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Body weight (lbs) <span className="text-muted-foreground font-normal">optional</span></Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={bodyWeightLbs}
-                  onChange={(e) => setBodyWeightLbs(e.target.value)}
-                  placeholder="175"
-                  className="bg-background border-border text-foreground"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Duration (min) <span className="text-muted-foreground font-normal">optional</span></Label>
-                <Input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(e.target.value)}
-                  placeholder="45"
-                  className="bg-background border-border text-foreground"
-                />
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label className="text-sm font-medium">Notes <span className="text-muted-foreground font-normal">optional</span></Label>
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="How did it feel? Any PRs or injuries?"
-                  rows={2}
-                  className="bg-background border-border text-foreground resize-none text-sm"
-                />
-              </div>
-            </div>
-
-            {validRows.length > 0 && !savingTemplate && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setSavingTemplate(true)}
-                className="w-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary text-xs"
-              >
-                <BookmarkPlus className="w-3.5 h-3.5 mr-1.5" />
-                Save as template
-              </Button>
-            )}
-
-            {savingTemplate && (
-              <div className="flex gap-2">
-                <Input
-                  value={templateName}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                  placeholder="Template name (e.g. Push Day A)"
-                  className="bg-background border-border text-foreground text-sm"
-                  onKeyDown={(e) => { if (e.key === "Enter") handleSaveTemplate(); if (e.key === "Escape") { setSavingTemplate(false); setTemplateName(""); } }}
-                  autoFocus
-                />
-                <Button
-                  size="sm"
-                  onClick={handleSaveTemplate}
-                  disabled={!templateName.trim() || createTemplateMutation.isPending}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
-                >
-                  {createTemplateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => { setSavingTemplate(false); setTemplateName(""); }} className="shrink-0">
-                  Cancel
-                </Button>
-              </div>
-            )}
-
-            {errorMsg && (
-              <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
-                {errorMsg}
-              </p>
-            )}
-
-            <div className="flex gap-3 pt-1">
-              <Button
-                variant="outline"
-                className="flex-1 border-border text-foreground hover:bg-muted"
-                onClick={handleClose}
-                disabled={mutation.isPending}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-                onClick={handleSave}
-                disabled={!canSave}
-              >
-                {mutation.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving…
-                  </>
-                ) : (
-                  "Save Session"
-                )}
-              </Button>
-            </div>
-            </>}
           </div>
         )}
       </DialogContent>
     </Dialog>
 
-    <ExerciseHistorySheet
-      exercise={historyExercise}
-      onClose={() => setHistoryExercise(null)}
-    />
+    <ExerciseHistorySheet exercise={historyExercise} onClose={() => setHistoryExercise(null)} />
     </>
   );
 }
