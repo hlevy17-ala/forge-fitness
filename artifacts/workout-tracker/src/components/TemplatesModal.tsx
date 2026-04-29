@@ -72,9 +72,12 @@ export function TemplatesModal({ open, onClose, onUseStrengthTemplate, onUseCard
 
   const queryClient = useQueryClient();
   const { data: exerciseList = [] } = useGetExerciseList();
-  const { data: strengthTemplates = [] } = useGetWorkoutTemplates({ query: { enabled: open } });
-  const { data: previewTemplate } = useGetWorkoutTemplate(previewId ?? 0, { query: { enabled: !!previewId } });
-  const { data: cardioTemplates = [] } = useGetCardioTemplates({ query: { enabled: open } });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: strengthTemplates = [] } = useGetWorkoutTemplates({ query: { enabled: open } as any });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: previewTemplate } = useGetWorkoutTemplate(previewId ?? 0, { query: { enabled: !!previewId } as any });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: cardioTemplates = [] } = useGetCardioTemplates({ query: { enabled: open } as any });
   const deleteStrengthMutation = useDeleteWorkoutTemplate();
   const deleteCardioMutation = useDeleteCardioTemplate();
   const createStrengthMutation = useCreateWorkoutTemplate();

@@ -58,8 +58,17 @@ export interface MostImprovedItem {
   firstAvgKg: number;
   /** Average weight (kg) in the most recent session */
   lastAvgKg: number;
+  /** Absolute weight gain in lbs from first to last session */
+  absGainLbs: number;
   /** Percentage gain from first to last session */
   pctGain: number;
+}
+
+export interface InsightsDateParams {
+  /** Filter start date (YYYY-MM-DD) */
+  startDate?: string;
+  /** Filter end date (YYYY-MM-DD) */
+  endDate?: string;
 }
 
 export interface BodyMetric {
@@ -76,6 +85,25 @@ export interface BodyMetric {
      * @nullable
      */
   waistInches: number | null;
+}
+
+export interface BodyMeasurement {
+  id: number;
+  /** Date (YYYY-MM-DD) */
+  date: string;
+  /** Body part name (e.g. arms, chest, legs) */
+  part: string;
+  /** Measurement in inches */
+  inches: number;
+}
+
+export interface CreateBodyMeasurementBody {
+  /** Date (YYYY-MM-DD) */
+  date: string;
+  /** Body part name */
+  part: string;
+  /** Measurement in inches */
+  inches: number;
 }
 
 export interface CreateBodyMetricBody {
@@ -98,40 +126,6 @@ export interface LogWorkoutExercise {
   weightLbs: number;
   reps: number;
   sets: number;
-}
-
-export type CardioExerciseType = 'treadmill' | 'outdoor_run' | 'bike' | 'elliptical';
-
-export interface CardioTemplateItem {
-  id: number;
-  name: string;
-  exerciseType: string;
-  durationMinutes: number;
-  distanceMiles: number | null;
-  inclinePercent: number | null;
-  createdAt: string;
-}
-
-export interface CreateCardioTemplateBody {
-  name: string;
-  exerciseType: CardioExerciseType;
-  durationMinutes: number;
-  distanceMiles?: number | null;
-  inclinePercent?: number | null;
-}
-
-export interface LogCardioBody {
-  date: string;
-  exerciseType: CardioExerciseType;
-  durationMinutes: number;
-  distanceMiles?: number | null;
-  inclinePercent?: number | null;
-  bodyWeightLbs?: number | null;
-  notes?: string | null;
-}
-
-export interface LogCardioResponse {
-  caloriesBurned: number | null;
 }
 
 export interface LogWorkoutBody {
@@ -161,29 +155,9 @@ export interface LogWorkoutResponse {
   /** Whether a body weight entry was also saved */
   bodyWeightLogged: boolean;
   /**
-   * Estimated calories burned, if duration was provided
-   * @nullable
-   */
-  caloriesBurned: number | null;
-}
-
-export interface WorkoutSuggestion {
-  /** Exercise name */
-  exercise: string;
-  /** Suggested weight in lbs for next session */
-  suggestedWeightLbs: number;
-  /** Current (last session) average weight in lbs */
-  currentWeightLbs: number;
-  /** Reason for the suggestion */
-  reason: string;
-}
-
-export interface WorkoutSessionCalories {
-  /** Workout date (YYYY-MM-DD) */
-  date: string;
-  /** @nullable */
-  durationMinutes: number | null;
-  /** @nullable */
+     * Estimated calories burned if duration was provided
+     * @nullable
+     */
   caloriesBurned: number | null;
 }
 
@@ -264,16 +238,39 @@ export interface LastSession {
   exercises: LastSessionExercise[];
 }
 
+export type CardioExerciseType = typeof CardioExerciseType[keyof typeof CardioExerciseType];
+
+
+export const CardioExerciseType = {
+  treadmill: 'treadmill',
+  outdoor_run: 'outdoor_run',
+  bike: 'bike',
+  elliptical: 'elliptical',
+} as const;
+
+export type WorkoutSessionType = typeof WorkoutSessionType[keyof typeof WorkoutSessionType];
+
+
+export const WorkoutSessionType = {
+  strength: 'strength',
+  cardio: 'cardio',
+} as const;
+
 export interface WorkoutSession {
   /** Workout date (YYYY-MM-DD) */
   date: string;
   /** Total number of sets logged on this date (0 for cardio) */
   setCount: number;
-  type: 'strength' | 'cardio';
+  type: WorkoutSessionType;
+  /** @nullable */
   cardioType?: string | null;
+  /** @nullable */
   cardioDurationMinutes?: number | null;
+  /** @nullable */
   cardioDistanceMiles?: number | null;
+  /** @nullable */
   cardioInclinePercent?: number | null;
+  /** @nullable */
   cardioCaloriesBurned?: number | null;
 }
 
@@ -429,8 +426,67 @@ export interface AuthVerifyOtpResponse {
   user: AuthUser;
 }
 
+export interface WorkoutSuggestion {
+  exercise: string;
+  suggestedWeightLbs: number;
+  currentWeightLbs: number;
+  reason: string;
+}
+
+export interface WorkoutSessionCalories {
+  date: string;
+  /** @nullable */
+  durationMinutes: number | null;
+  /** @nullable */
+  caloriesBurned: number | null;
+}
+
+export interface CardioTemplateItem {
+  id: number;
+  name: string;
+  exerciseType: string;
+  durationMinutes: number;
+  /** @nullable */
+  distanceMiles: number | null;
+  /** @nullable */
+  inclinePercent: number | null;
+  createdAt: string;
+}
+
+export interface CreateCardioTemplateBody {
+  name: string;
+  exerciseType: string;
+  durationMinutes: number;
+  /** @nullable */
+  distanceMiles?: number | null;
+  /** @nullable */
+  inclinePercent?: number | null;
+}
+
+export interface LogCardioBody {
+  /** Workout date (YYYY-MM-DD) */
+  date: string;
+  exerciseType: string;
+  durationMinutes: number;
+  /** @nullable */
+  distanceMiles?: number | null;
+  /** @nullable */
+  inclinePercent?: number | null;
+  /** @nullable */
+  bodyWeightLbs?: number | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface LogCardioResponse {
+  /** @nullable */
+  caloriesBurned: number | null;
+}
+
 export type UploadWorkoutCsvBody = {
   file: Blob;
+  /** JSON string with column mapping config */
+  mapping?: string;
 };
 
 export type GetWorkoutsByMuscleGroupParams = {

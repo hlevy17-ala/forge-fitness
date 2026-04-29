@@ -6,6 +6,19 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { pool } from "@workspace/db";
+
+// Auto-migrate: create any missing tables that may have been added since last deploy
+pool.query(`
+  CREATE TABLE IF NOT EXISTS body_measurements (
+    id         SERIAL PRIMARY KEY,
+    date       DATE NOT NULL,
+    part       TEXT NOT NULL,
+    inches     NUMERIC(8, 2) NOT NULL,
+    user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE (user_id, date, part)
+  )
+`).catch((err) => logger.error({ err }, "Failed to auto-migrate body_measurements table"));
 
 const app: Express = express();
 

@@ -30,9 +30,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ensureGuestSession().then(() => setProvisioned(true));
   }, [provisioned]);
 
-  const { data: user, isLoading, isError } = useGetMe({
-    query: { enabled: provisioned, retry: false },
-  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: user, isLoading, isError } = useGetMe({ query: { enabled: provisioned, retry: false } as any });
 
   const { mutate: logoutMutate } = useLogout();
 

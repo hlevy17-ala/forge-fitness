@@ -68,19 +68,18 @@ export function SessionHistoryModal({ open, onClose }: Props) {
 
   const queryClient = useQueryClient();
 
-  const { data: sessions = [], isLoading: sessionsLoading } = useGetWorkoutSessions({
-    query: { enabled: open },
-  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: sessions = [], isLoading: sessionsLoading } = useGetWorkoutSessions({ query: { enabled: open } as any });
 
   const sessionDate = view.kind === "session" ? view.date : undefined;
   const { data: sets = [], isLoading: setsLoading } = useGetSessionSets(
     sessionDate ?? "",
-    { query: { enabled: !!sessionDate } },
+    { query: { enabled: !!sessionDate } as any },
   );
 
   const { data: comparison = [] } = useGetSessionComparison(
     sessionDate ?? "",
-    { query: { enabled: !!sessionDate && showComparison } },
+    { query: { enabled: !!sessionDate && showComparison } as any },
   );
 
   const updateMutation = useUpdateWorkoutSet();

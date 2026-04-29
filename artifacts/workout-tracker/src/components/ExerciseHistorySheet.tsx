@@ -28,9 +28,9 @@ function fmtDate(d: string) {
 export function ExerciseHistorySheet({ exercise, onClose }: Props) {
   const open = !!exercise;
 
-  const { data: allAvgWeights = [] } = useGetAvgWeightByExercise({ query: { enabled: open } });
-  const { data: allOneRm = [] } = useGetEstimatedOneRm({ query: { enabled: open } });
-  const { data: prs = [] } = useGetPersonalRecords({ query: { enabled: open } });
+  const { data: allAvgWeights = [] } = useGetAvgWeightByExercise({ query: { enabled: open } as any });
+  const { data: allOneRm = [] } = useGetEstimatedOneRm({ query: { enabled: open } as any });
+  const { data: prs = [] } = useGetPersonalRecords({ query: { enabled: open } as any });
 
   const chartData = useMemo(() => {
     if (!exercise) return [];

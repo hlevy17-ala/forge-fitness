@@ -32,12 +32,14 @@ import {
   GetWorkoutSuggestionsResponse,
   GetWorkoutSessionsCaloriesResponse,
   LogCardioBody,
-  LogCardioResponse,
   CreateCardioTemplateBody,
   GetCardioTemplatesResponse,
-  CardioTemplateItem,
+  CreateCardioTemplateResponse,
   DeleteCardioTemplateResponse,
 } from "@workspace/api-zod";
+
+// Alias for the cardio template item shape (same schema as create response)
+const CardioTemplateItem = CreateCardioTemplateResponse;
 
 const router: IRouter = Router();
 const upload = multer({
@@ -1060,12 +1062,12 @@ router.post("/workouts/log-cardio", async (req, res): Promise<void> => {
     weightKg = bodyWeightLbs / KG_TO_LBS;
   } else {
     const bw = await db
-      .select({ value: bodyMetricsTable.weightKg })
+      .select({ value: bodyMetricsTable.weightLbs })
       .from(bodyMetricsTable)
       .where(eq(bodyMetricsTable.userId, userId))
       .orderBy(desc(bodyMetricsTable.date))
       .limit(1);
-    if (bw[0]) weightKg = Number(bw[0].value);
+    if (bw[0]) weightKg = Number(bw[0].value) / KG_TO_LBS;
   }
 
   // Calorie calculation
@@ -1102,7 +1104,7 @@ router.post("/workouts/log-cardio", async (req, res): Promise<void> => {
     notes: notes ?? null,
   });
 
-  res.json(LogCardioResponse.parse({ caloriesBurned }));
+  res.json({ caloriesBurned });
 });
 
 export default router;

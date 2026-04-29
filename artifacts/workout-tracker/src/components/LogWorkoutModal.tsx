@@ -128,19 +128,18 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
 
   const queryClient = useQueryClient();
   const { data: exerciseList = [] } = useGetExerciseList();
-  const { data: lastSession } = useGetLastSession({ query: { enabled: open } });
-  const { data: personalRecords = [] } = useGetPersonalRecords({ query: { enabled: open } });
-  const { data: estimatedOneRm = [] } = useGetEstimatedOneRm({ query: { enabled: open } });
-  const { data: templates = [] } = useGetWorkoutTemplates({ query: { enabled: open } });
-  const { data: selectedTemplate } = useGetWorkoutTemplate(selectedTemplateId ?? 0, {
-    query: { enabled: !!selectedTemplateId },
-  });
-  const { data: suggestions = [] } = useGetWorkoutSuggestions({ query: { enabled: open } });
+  const { data: lastSession } = useGetLastSession({ query: { enabled: open } as any });
+  const { data: personalRecords = [] } = useGetPersonalRecords({ query: { enabled: open } as any });
+  const { data: estimatedOneRm = [] } = useGetEstimatedOneRm({ query: { enabled: open } as any });
+  const { data: templates = [] } = useGetWorkoutTemplates({ query: { enabled: open } as any });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: selectedTemplate } = useGetWorkoutTemplate(selectedTemplateId ?? 0, { query: { enabled: !!selectedTemplateId } as any });
+  const { data: suggestions = [] } = useGetWorkoutSuggestions({ query: { enabled: open } as any });
   const mutation = useLogWorkout();
   const cardioMutation = useLogCardio();
   const createTemplateMutation = useCreateWorkoutTemplate();
   const deleteTemplateMutation = useDeleteWorkoutTemplate();
-  const { data: cardioTemplates = [] } = useGetCardioTemplates({ query: { enabled: open && mode === "cardio" } });
+  const { data: cardioTemplates = [] } = useGetCardioTemplates({ query: { enabled: open && mode === "cardio" } as any });
   const createCardioTemplateMutation = useCreateCardioTemplate();
   const deleteCardioTemplateMutation = useDeleteCardioTemplate();
 

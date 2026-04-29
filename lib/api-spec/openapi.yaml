@@ -14,6 +14,8 @@ tags:
     description: Workout data operations
   - name: bodyMetrics
     description: Body metrics operations
+  - name: bodyMeasurements
+    description: Custom body measurements operations
   - name: nutrition
     description: Nutrition tracking operations
   - name: settings
@@ -152,6 +154,9 @@ paths:
                 file:
                   type: string
                   format: binary
+                mapping:
+                  type: string
+                  description: JSON string with column mapping config
               required:
                 - file
       responses:
@@ -832,6 +837,185 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /workouts/suggestions:
+    get:
+      operationId: getWorkoutSuggestions
+      tags: [workouts]
+      summary: Get weight suggestions for each exercise
+      description: Returns suggested weights based on recent session performance
+      responses:
+        "200":
+          description: Workout suggestions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkoutSuggestion"
+
+  /workouts/sessions-calories:
+    get:
+      operationId: getWorkoutSessionsCalories
+      tags: [workouts]
+      summary: Get calories burned per session
+      description: Returns duration and calories burned for each workout session
+      responses:
+        "200":
+          description: Sessions calories list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkoutSessionCalories"
+
+  /workouts/cardio-templates:
+    get:
+      operationId: getCardioTemplates
+      tags: [workouts]
+      summary: Get all cardio templates
+      responses:
+        "200":
+          description: Cardio templates list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CardioTemplateItem"
+    post:
+      operationId: createCardioTemplate
+      tags: [workouts]
+      summary: Create a cardio template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCardioTemplateBody"
+      responses:
+        "200":
+          description: Created cardio template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardioTemplateItem"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /workouts/cardio-templates/{id}:
+    delete:
+      operationId: deleteCardioTemplate
+      tags: [workouts]
+      summary: Delete a cardio template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+
+  /workouts/log-cardio:
+    post:
+      operationId: logCardio
+      tags: [workouts]
+      summary: Log a cardio session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogCardioBody"
+      responses:
+        "201":
+          description: Cardio session logged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogCardioResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /body-measurements:
+    get:
+      operationId: getBodyMeasurements
+      tags: [bodyMeasurements]
+      summary: Get all custom body measurements
+      description: Returns all body measurement entries ordered by date ascending
+      responses:
+        "200":
+          description: Body measurements list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BodyMeasurement"
+    post:
+      operationId: createBodyMeasurement
+      tags: [bodyMeasurements]
+      summary: Log a body measurement entry
+      description: Insert or update a body measurement entry for the given date and part
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBodyMeasurementBody"
+      responses:
+        "201":
+          description: Created body measurement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BodyMeasurement"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /body-measurements/{id}:
+    delete:
+      operationId: deleteBodyMeasurement
+      tags: [bodyMeasurements]
+      summary: Delete a body measurement entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /settings/insights-date-range:
     get:
       operationId: getInsightsDateRange
@@ -1009,6 +1193,9 @@ components:
         lastAvgKg:
           type: number
           description: Average weight (kg) in the most recent session
+        absGainLbs:
+          type: number
+          description: Absolute weight gain in lbs from first to last session
         pctGain:
           type: number
           description: Percentage gain from first to last session
@@ -1018,7 +1205,18 @@ components:
         - lastDate
         - firstAvgKg
         - lastAvgKg
+        - absGainLbs
         - pctGain
+
+    InsightsDateParams:
+      type: object
+      properties:
+        startDate:
+          type: string
+          description: Filter start date (YYYY-MM-DD)
+        endDate:
+          type: string
+          description: Filter end date (YYYY-MM-DD)
 
     BodyMetric:
       type: object
@@ -1039,6 +1237,45 @@ components:
         - date
         - weightLbs
         - waistInches
+
+    BodyMeasurement:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+          description: Date (YYYY-MM-DD)
+        part:
+          type: string
+          description: Body part name (e.g. arms, chest, legs)
+        inches:
+          type: number
+          format: float
+          description: Measurement in inches
+      required:
+        - id
+        - date
+        - part
+        - inches
+
+    CreateBodyMeasurementBody:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Date (YYYY-MM-DD)
+        part:
+          type: string
+          description: Body part name
+        inches:
+          type: number
+          format: float
+          description: Measurement in inches
+      required:
+        - date
+        - part
+        - inches
 
     CreateBodyMetricBody:
       type: object
@@ -1088,6 +1325,9 @@ components:
         bodyWeightLbs:
           type: ["number", "null"]
           description: Optional body weight to log alongside the workout
+        durationMinutes:
+          type: ["integer", "null"]
+          description: Optional workout duration in minutes for calorie calculation
       required:
         - date
         - exercises
@@ -1101,9 +1341,13 @@ components:
         bodyWeightLogged:
           type: boolean
           description: Whether a body weight entry was also saved
+        caloriesBurned:
+          type: ["number", "null"]
+          description: Estimated calories burned if duration was provided
       required:
         - inserted
         - bodyWeightLogged
+        - caloriesBurned
 
     PersonalRecordItem:
       type: object
@@ -1256,6 +1500,10 @@ components:
         - date
         - exercises
 
+    CardioExerciseType:
+      type: string
+      enum: [treadmill, outdoor_run, bike, elliptical]
+
     WorkoutSession:
       type: object
       properties:
@@ -1264,10 +1512,24 @@ components:
           description: Workout date (YYYY-MM-DD)
         setCount:
           type: integer
-          description: Total number of sets logged on this date
+          description: Total number of sets logged on this date (0 for cardio)
+        type:
+          type: string
+          enum: [strength, cardio]
+        cardioType:
+          type: ["string", "null"]
+        cardioDurationMinutes:
+          type: ["integer", "null"]
+        cardioDistanceMiles:
+          type: ["number", "null"]
+        cardioInclinePercent:
+          type: ["number", "null"]
+        cardioCaloriesBurned:
+          type: ["number", "null"]
       required:
         - date
         - setCount
+        - type
 
     WorkoutSet:
       type: object
@@ -1540,4 +1802,109 @@ components:
         - id
         - email
         - isGuest
-        - customEnd
+
+    WorkoutSuggestion:
+      type: object
+      properties:
+        exercise:
+          type: string
+        suggestedWeightLbs:
+          type: number
+        currentWeightLbs:
+          type: number
+        reason:
+          type: string
+      required:
+        - exercise
+        - suggestedWeightLbs
+        - currentWeightLbs
+        - reason
+
+    WorkoutSessionCalories:
+      type: object
+      properties:
+        date:
+          type: string
+        durationMinutes:
+          type: ["integer", "null"]
+        caloriesBurned:
+          type: ["number", "null"]
+      required:
+        - date
+        - durationMinutes
+        - caloriesBurned
+
+    CardioTemplateItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        exerciseType:
+          type: string
+        durationMinutes:
+          type: integer
+        distanceMiles:
+          type: ["number", "null"]
+        inclinePercent:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - exerciseType
+        - durationMinutes
+        - distanceMiles
+        - inclinePercent
+        - createdAt
+
+    CreateCardioTemplateBody:
+      type: object
+      properties:
+        name:
+          type: string
+        exerciseType:
+          type: string
+        durationMinutes:
+          type: integer
+        distanceMiles:
+          type: ["number", "null"]
+        inclinePercent:
+          type: ["number", "null"]
+      required:
+        - name
+        - exerciseType
+        - durationMinutes
+
+    LogCardioBody:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Workout date (YYYY-MM-DD)
+        exerciseType:
+          type: string
+        durationMinutes:
+          type: integer
+        distanceMiles:
+          type: ["number", "null"]
+        inclinePercent:
+          type: ["number", "null"]
+        bodyWeightLbs:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - date
+        - exerciseType
+        - durationMinutes
+
+    LogCardioResponse:
+      type: object
+      properties:
+        caloriesBurned:
+          type: ["number", "null"]
+      required:
+        - caloriesBurned

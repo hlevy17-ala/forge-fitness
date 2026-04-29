@@ -7,7 +7,6 @@
  */
 import * as zod from 'zod';
 
-
 /**
  * Auto-provision an anonymous guest account and return a session token
  * @summary Create guest session
@@ -89,7 +88,8 @@ export const HealthCheckResponse = zod.object({
  * @summary Upload workout CSV
  */
 export const UploadWorkoutCsvBody = zod.object({
-  "file": zod.instanceof(File)
+  "file": zod.instanceof(File),
+  "mapping": zod.string().optional().describe('JSON string with column mapping config')
 })
 
 export const UploadWorkoutCsvResponse = zod.object({
@@ -169,6 +169,7 @@ export const GetMostImprovedResponseItem = zod.object({
   "lastDate": zod.string().describe('Date of most recent recorded session (YYYY-MM-DD)'),
   "firstAvgKg": zod.number().describe('Average weight (kg) in the first session'),
   "lastAvgKg": zod.number().describe('Average weight (kg) in the most recent session'),
+  "absGainLbs": zod.number().describe('Absolute weight gain in lbs from first to last session'),
   "pctGain": zod.number().describe('Percentage gain from first to last session')
 })
 export const GetMostImprovedResponse = zod.array(GetMostImprovedResponseItem)
@@ -187,48 +188,14 @@ export const LogWorkoutBody = zod.object({
 })),
   "notes": zod.string().nullish().describe('Optional session notes'),
   "bodyWeightLbs": zod.number().nullish().describe('Optional body weight to log alongside the workout'),
-  "durationMinutes": zod.number().int().positive().nullish().describe('Optional workout duration in minutes for calorie calculation')
+  "durationMinutes": zod.number().nullish().describe('Optional workout duration in minutes for calorie calculation')
 })
 
 export const LogWorkoutResponse = zod.object({
   "inserted": zod.number().describe('Number of sets inserted'),
   "bodyWeightLogged": zod.boolean().describe('Whether a body weight entry was also saved'),
-  "caloriesBurned": zod.number().nullable().describe('Estimated calories burned, if duration was provided')
+  "caloriesBurned": zod.number().nullable().describe('Estimated calories burned if duration was provided')
 })
-
-export const CardioExerciseType = zod.enum(["treadmill", "outdoor_run", "bike", "elliptical"])
-export type CardioExerciseType = zod.infer<typeof CardioExerciseType>
-
-export const LogCardioBody = zod.object({
-  "date": zod.string().describe('Workout date (YYYY-MM-DD)'),
-  "exerciseType": CardioExerciseType,
-  "durationMinutes": zod.number().int().positive(),
-  "distanceMiles": zod.number().positive().nullish(),
-  "inclinePercent": zod.number().min(0).max(30).nullish(),
-  "bodyWeightLbs": zod.number().positive().nullish(),
-  "notes": zod.string().nullish(),
-})
-export type LogCardioBody = zod.infer<typeof LogCardioBody>
-
-export const LogCardioResponse = zod.object({
-  "caloriesBurned": zod.number().nullable(),
-})
-export type LogCardioResponse = zod.infer<typeof LogCardioResponse>
-
-export const GetWorkoutSuggestionsResponseItem = zod.object({
-  "exercise": zod.string().describe('Exercise name'),
-  "suggestedWeightLbs": zod.number().describe('Suggested weight in lbs for next session'),
-  "currentWeightLbs": zod.number().describe('Current (last session) average weight in lbs'),
-  "reason": zod.string().describe('Reason for the suggestion')
-})
-export const GetWorkoutSuggestionsResponse = zod.array(GetWorkoutSuggestionsResponseItem)
-
-export const GetWorkoutSessionsCaloriesResponseItem = zod.object({
-  "date": zod.string().describe('Workout date (YYYY-MM-DD)'),
-  "durationMinutes": zod.number().nullable(),
-  "caloriesBurned": zod.number().nullable()
-})
-export const GetWorkoutSessionsCaloriesResponse = zod.array(GetWorkoutSessionsCaloriesResponseItem)
 
 
 /**
@@ -386,12 +353,12 @@ export const GetLastSessionResponse = zod.union([zod.object({
 export const GetWorkoutSessionsResponseItem = zod.object({
   "date": zod.string().describe('Workout date (YYYY-MM-DD)'),
   "setCount": zod.number().describe('Total number of sets logged on this date (0 for cardio)'),
-  "type": zod.enum(["strength", "cardio"]).describe('Session type'),
-  "cardioType": zod.string().nullable().optional(),
-  "cardioDurationMinutes": zod.number().nullable().optional(),
-  "cardioDistanceMiles": zod.number().nullable().optional(),
-  "cardioInclinePercent": zod.number().nullable().optional(),
-  "cardioCaloriesBurned": zod.number().nullable().optional(),
+  "type": zod.enum(['strength', 'cardio']),
+  "cardioType": zod.string().nullish(),
+  "cardioDurationMinutes": zod.number().nullish(),
+  "cardioDistanceMiles": zod.number().nullish(),
+  "cardioInclinePercent": zod.number().nullish(),
+  "cardioCaloriesBurned": zod.number().nullish()
 })
 export const GetWorkoutSessionsResponse = zod.array(GetWorkoutSessionsResponseItem)
 
@@ -518,29 +485,6 @@ export const DeleteWorkoutTemplateResponse = zod.object({
   "deleted": zod.number().describe('Number of sets deleted')
 })
 
-export const CardioTemplateItem = zod.object({
-  "id": zod.number(),
-  "name": zod.string(),
-  "exerciseType": zod.string(),
-  "durationMinutes": zod.number(),
-  "distanceMiles": zod.number().nullable(),
-  "inclinePercent": zod.number().nullable(),
-  "createdAt": zod.string(),
-})
-export type CardioTemplateItem = zod.infer<typeof CardioTemplateItem>
-export const GetCardioTemplatesResponse = zod.array(CardioTemplateItem)
-
-export const CreateCardioTemplateBody = zod.object({
-  "name": zod.string(),
-  "exerciseType": CardioExerciseType,
-  "durationMinutes": zod.number().int().positive(),
-  "distanceMiles": zod.number().positive().nullish(),
-  "inclinePercent": zod.number().min(0).max(30).nullish(),
-})
-export type CreateCardioTemplateBody = zod.infer<typeof CreateCardioTemplateBody>
-
-export const DeleteCardioTemplateResponse = zod.object({ "deleted": zod.number() })
-
 
 /**
  * @summary Update an individual workout set
@@ -603,6 +547,130 @@ export const CreateBodyMetricBody = zod.object({
 
 
 /**
+ * Returns suggested weights based on recent session performance
+ * @summary Get weight suggestions for each exercise
+ */
+export const GetWorkoutSuggestionsResponseItem = zod.object({
+  "exercise": zod.string(),
+  "suggestedWeightLbs": zod.number(),
+  "currentWeightLbs": zod.number(),
+  "reason": zod.string()
+})
+export const GetWorkoutSuggestionsResponse = zod.array(GetWorkoutSuggestionsResponseItem)
+
+
+/**
+ * Returns duration and calories burned for each workout session
+ * @summary Get calories burned per session
+ */
+export const GetWorkoutSessionsCaloriesResponseItem = zod.object({
+  "date": zod.string(),
+  "durationMinutes": zod.number().nullable(),
+  "caloriesBurned": zod.number().nullable()
+})
+export const GetWorkoutSessionsCaloriesResponse = zod.array(GetWorkoutSessionsCaloriesResponseItem)
+
+
+/**
+ * @summary Get all cardio templates
+ */
+export const GetCardioTemplatesResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "exerciseType": zod.string(),
+  "durationMinutes": zod.number(),
+  "distanceMiles": zod.number().nullable(),
+  "inclinePercent": zod.number().nullable(),
+  "createdAt": zod.string()
+})
+export const GetCardioTemplatesResponse = zod.array(GetCardioTemplatesResponseItem)
+
+
+/**
+ * @summary Create a cardio template
+ */
+export const CreateCardioTemplateBody = zod.object({
+  "name": zod.string(),
+  "exerciseType": zod.string(),
+  "durationMinutes": zod.number(),
+  "distanceMiles": zod.number().nullish(),
+  "inclinePercent": zod.number().nullish()
+})
+
+export const CreateCardioTemplateResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "exerciseType": zod.string(),
+  "durationMinutes": zod.number(),
+  "distanceMiles": zod.number().nullable(),
+  "inclinePercent": zod.number().nullable(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a cardio template
+ */
+export const DeleteCardioTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteCardioTemplateResponse = zod.object({
+  "deleted": zod.number().describe('Number of sets deleted')
+})
+
+
+/**
+ * @summary Log a cardio session
+ */
+export const LogCardioBody = zod.object({
+  "date": zod.string().describe('Workout date (YYYY-MM-DD)'),
+  "exerciseType": zod.string(),
+  "durationMinutes": zod.number(),
+  "distanceMiles": zod.number().nullish(),
+  "inclinePercent": zod.number().nullish(),
+  "bodyWeightLbs": zod.number().nullish(),
+  "notes": zod.string().nullish()
+})
+
+
+/**
+ * Returns all body measurement entries ordered by date ascending
+ * @summary Get all custom body measurements
+ */
+export const GetBodyMeasurementsResponseItem = zod.object({
+  "id": zod.number(),
+  "date": zod.string().describe('Date (YYYY-MM-DD)'),
+  "part": zod.string().describe('Body part name (e.g. arms, chest, legs)'),
+  "inches": zod.number().describe('Measurement in inches')
+})
+export const GetBodyMeasurementsResponse = zod.array(GetBodyMeasurementsResponseItem)
+
+
+/**
+ * Insert or update a body measurement entry for the given date and part
+ * @summary Log a body measurement entry
+ */
+export const CreateBodyMeasurementBody = zod.object({
+  "date": zod.string().describe('Date (YYYY-MM-DD)'),
+  "part": zod.string().describe('Body part name'),
+  "inches": zod.number().describe('Measurement in inches')
+})
+
+
+/**
+ * @summary Delete a body measurement entry
+ */
+export const DeleteBodyMeasurementParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteBodyMeasurementResponse = zod.object({
+  "deleted": zod.number().describe('Number of sets deleted')
+})
+
+
+/**
  * Returns the saved date range preset for the Insights tab, or null if not set
  * @summary Get Insights date range preference
  */
@@ -649,5 +717,3 @@ export const SetWeeklySessionsGoalBody = zod.object({
 export const SetWeeklySessionsGoalResponse = zod.object({
   "value": zod.number()
 })
-
-

@@ -11,9 +11,9 @@ let package = Package(
             targets: ["CapApp-SPM"])
     ],
     dependencies: [
-        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.3.1"),
-        .package(name: "CapacitorCommunityAppleSignIn", path: "../../../../../node_modules/.pnpm/@capacitor-community+apple-sign-in@7.1.0_@capacitor+core@8.3.1/node_modules/@capacitor-community/apple-sign-in"),
-        .package(name: "CapacitorStatusBar", path: "../../../../../node_modules/.pnpm/@capacitor+status-bar@8.0.2_@capacitor+core@8.3.1/node_modules/@capacitor/status-bar")
+        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "7.6.2"),
+        .package(name: "CapacitorCommunityAppleSignIn", path: "../../../../../node_modules/.pnpm/@capacitor-community+apple-sign-in@7.1.0_@capacitor+core@7.6.2/node_modules/@capacitor-community/apple-sign-in"),
+        .package(name: "CapacitorStatusBar", path: "../../../../../node_modules/.pnpm/@capacitor+status-bar@7.0.6_@capacitor+core@7.6.2/node_modules/@capacitor/status-bar")
     ],
     targets: [
         .target(
