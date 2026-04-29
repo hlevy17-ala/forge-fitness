@@ -157,36 +157,38 @@ export function ExerciseProgress() {
           <p className="text-muted-foreground">Analyze your volume and average weight progression per exercise.</p>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="w-full sm:w-[260px]">
-            <Select value={selectedExercise} onValueChange={setSelectedExercise}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select exercise" />
-              </SelectTrigger>
-              <SelectContent>
-                {exercises.map(ex => (
-                  <SelectItem key={ex} value={ex}>{ex}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="flex flex-col gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full">
+            <div className="flex-1 sm:w-[260px]">
+              <Select value={selectedExercise} onValueChange={setSelectedExercise}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select exercise" />
+                </SelectTrigger>
+                <SelectContent>
+                  {exercises.map(ex => (
+                    <SelectItem key={ex} value={ex}>{ex}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {selectedExercise && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setHistoryExercise(selectedExercise)}
+                className="shrink-0 gap-1.5 text-xs"
+              >
+                <BarChart2 className="w-3.5 h-3.5" />
+                1RM History
+              </Button>
+            )}
           </div>
-          {selectedExercise && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setHistoryExercise(selectedExercise)}
-              className="shrink-0 gap-1.5 text-xs"
-            >
-              <BarChart2 className="w-3.5 h-3.5" />
-              1RM History
-            </Button>
-          )}
-          <div className="flex rounded-md border border-border overflow-hidden shrink-0">
+          <div className="flex rounded-md border border-border overflow-hidden w-full sm:w-auto">
             <Button
               size="sm"
               variant="ghost"
               onClick={() => setViewMode("history")}
-              className={`rounded-none px-3 h-9 text-xs font-medium ${viewMode === "history" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`}
+              className={`flex-1 sm:flex-none rounded-none px-3 h-9 text-xs font-medium ${viewMode === "history" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`}
             >
               Full History
             </Button>
@@ -194,7 +196,7 @@ export function ExerciseProgress() {
               size="sm"
               variant="ghost"
               onClick={() => setViewMode("comparison")}
-              className={`rounded-none px-3 h-9 text-xs font-medium border-l border-border ${viewMode === "comparison" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`}
+              className={`flex-1 sm:flex-none rounded-none px-3 h-9 text-xs font-medium border-l border-border ${viewMode === "comparison" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`}
             >
               Last Session
             </Button>
