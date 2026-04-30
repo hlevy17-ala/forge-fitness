@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { saveWorkoutToHealthKit } from "@/lib/healthkit";
+import { saveWorkoutToHealthKit, readAvgHeartRateFromHealthKit, readUserProfileFromHealthKit } from "@/lib/healthkit";
 import {
   Plus, Trash2, CheckCircle2, Loader2, RotateCcw, Trophy, BookmarkPlus,
   ChevronDown, BarChart2, Dumbbell, Heart, Timer, Play, Square, AlertTriangle, Check, X
@@ -105,18 +105,20 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
   const [historyExercise, setHistoryExercise] = useState<string | null>(null);
   const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
 
-  // Workout timer
+  // Workout timer (timestamp-based so it survives backgrounding)
   const [timerPrompt, setTimerPrompt] = useState(false);
   const [workoutStarted, setWorkoutStarted] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const workoutStartTs = useRef<number | null>(null); // epoch ms when workout timer started
 
-  // Rest timer
+  // Rest timer (timestamp-based)
   const [restSeconds, setRestSeconds] = useState(0);
   const [restDefault, setRestDefault] = useState(getDefaultRest);
   const [editingRestDefault, setEditingRestDefault] = useState(false);
   const [restDefaultInput, setRestDefaultInput] = useState(String(getDefaultRest()));
   const restRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const restEndTs = useRef<number | null>(null); // epoch ms when rest should end
 
   // Cardio state
   const [cardioType, setCardioType] = useState<CardioExerciseType>("treadmill");
@@ -143,11 +145,37 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
   const createCardioTemplateMutation = useCreateCardioTemplate();
   const deleteCardioTemplateMutation = useDeleteCardioTemplate();
 
-  // Workout timer
+  // Play a short triple beep using Web Audio API
+  const playBeep = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      [0, 0.18, 0.36].forEach(offset => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 880;
+        osc.type = "sine";
+        gain.gain.setValueAtTime(0.6, ctx.currentTime + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.14);
+        osc.start(ctx.currentTime + offset);
+        osc.stop(ctx.currentTime + offset + 0.14);
+      });
+    } catch { /* silently ignore if AudioContext not supported */ }
+  }, []);
+
+  // Workout timer — uses epoch timestamp so backgrounding doesn't drift
   const startTimer = useCallback(() => {
     setWorkoutStarted(true);
     setElapsedSeconds(0);
-    timerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+    workoutStartTs.current = Date.now();
+    timerRef.current = setInterval(() => {
+      if (workoutStartTs.current != null) {
+        setElapsedSeconds(Math.floor((Date.now() - workoutStartTs.current) / 1000));
+      }
+    }, 1000);
   }, []);
 
   const stopTimer = useCallback(() => {
@@ -155,27 +183,54 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
     timerRef.current = null;
   }, []);
 
-  // Rest timer
+  // Rest timer — stores the target end timestamp so it self-corrects after background
   const startRest = useCallback(() => {
     if (restRef.current) clearInterval(restRef.current);
+    restEndTs.current = Date.now() + restDefault * 1000;
     setRestSeconds(restDefault);
     restRef.current = setInterval(() => {
-      setRestSeconds(s => {
-        if (s <= 1) {
-          clearInterval(restRef.current!);
-          restRef.current = null;
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
-  }, [restDefault]);
+      if (restEndTs.current == null) return;
+      const remaining = Math.max(0, Math.ceil((restEndTs.current - Date.now()) / 1000));
+      setRestSeconds(remaining);
+      if (remaining === 0) {
+        clearInterval(restRef.current!);
+        restRef.current = null;
+        restEndTs.current = null;
+        playBeep();
+      }
+    }, 500); // 500 ms for better accuracy near zero
+  }, [restDefault, playBeep]);
 
   const stopRest = useCallback(() => {
     if (restRef.current) clearInterval(restRef.current);
     restRef.current = null;
+    restEndTs.current = null;
     setRestSeconds(0);
   }, []);
+
+  // Resync both timers when app returns to foreground (screen lock / app switch)
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) return;
+      // Resync workout timer
+      if (workoutStartTs.current != null) {
+        setElapsedSeconds(Math.floor((Date.now() - workoutStartTs.current) / 1000));
+      }
+      // Resync rest timer
+      if (restEndTs.current != null) {
+        const remaining = Math.max(0, Math.ceil((restEndTs.current - Date.now()) / 1000));
+        setRestSeconds(remaining);
+        if (remaining === 0) {
+          if (restRef.current) clearInterval(restRef.current);
+          restRef.current = null;
+          restEndTs.current = null;
+          playBeep();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [playBeep]);
 
   useEffect(() => {
     return () => {
@@ -253,7 +308,7 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
   const incompleteSets = allSets.filter(s => !s.done && s.exercise.trim());
   const hasIncompleteSets = incompleteSets.length > 0;
 
-  const doSave = () => {
+  const doSave = async () => {
     if (doneSets.length === 0) return;
     setErrorMsg(null);
     setShowIncompleteWarning(false);
@@ -268,6 +323,28 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
 
     const durationMins = workoutStarted ? Math.round(elapsedSeconds / 60) : undefined;
 
+    // Read Apple Health data for improved calorie calculation
+    const endTime = new Date();
+    const startTime = workoutStartTs.current != null
+      ? new Date(workoutStartTs.current)
+      : durationMins != null
+        ? new Date(endTime.getTime() - durationMins * 60 * 1000)
+        : null;
+
+    let avgHeartRate: number | null = null;
+    let age: number | null = null;
+    let gender: "male" | "female" | null = null;
+
+    if (startTime != null) {
+      const [hr, profile] = await Promise.all([
+        readAvgHeartRateFromHealthKit(startTime, endTime),
+        readUserProfileFromHealthKit(),
+      ]);
+      avgHeartRate = hr;
+      age = profile.age;
+      gender = profile.biologicalSex;
+    }
+
     mutation.mutate(
       {
         data: {
@@ -276,6 +353,9 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
           notes: notes.trim() || null,
           bodyWeightLbs: bodyWeightLbs ? parseFloat(bodyWeightLbs) : null,
           durationMinutes: durationMins || null,
+          avgHeartRate,
+          age,
+          gender,
         },
       },
       {
@@ -283,9 +363,7 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
           stopTimer();
           setSavedCount(result.inserted);
           setSavedCalories(result.caloriesBurned ?? null);
-          if (result.caloriesBurned && durationMins) {
-            const endTime = new Date();
-            const startTime = new Date(endTime.getTime() - durationMins * 60 * 1000);
+          if (result.caloriesBurned && startTime) {
             saveWorkoutToHealthKit({ startDate: startTime, endDate: endTime, calories: result.caloriesBurned }).catch(console.error);
           }
           queryClient.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && String(q.queryKey[0]).startsWith("/api/workouts") });

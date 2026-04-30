@@ -208,7 +208,7 @@ router.post("/workouts/log", async (req, res): Promise<void> => {
     return;
   }
 
-  const { date, exercises, notes, bodyWeightLbs, durationMinutes } = parsed.data;
+  const { date, exercises, notes, bodyWeightLbs, durationMinutes, avgHeartRate, age, gender } = parsed.data;
   const userId = req.userId!;
 
   const toInsert = exercises.flatMap((ex) =>
@@ -226,6 +226,29 @@ router.post("/workouts/log", async (req, res): Promise<void> => {
   if (toInsert.length === 0) {
     res.status(400).json({ error: "No valid sets to insert" });
     return;
+  }
+
+  // Calorie helper functions
+  // Keytel 2005 HR-based formula (most accurate when HR data is available)
+  function calcCaloriesKeytel(hr: number, weightKg: number, ageYrs: number, sex: string, mins: number): number {
+    const calPerMin = sex === "female"
+      ? (-20.4022 + 0.4472 * hr - 0.1263 * weightKg + 0.0740 * ageYrs) / 4.184
+      : (-55.0969 + 0.6309 * hr + 0.1988 * weightKg + 0.2017 * ageYrs) / 4.184;
+    return Math.max(0, Math.round(calPerMin * mins * 10) / 10);
+  }
+
+  // Volume-based formula: categorise exercises as compound or isolation and apply coefficient
+  const COMPOUND_KEYWORDS = ["squat","deadlift","press","row","pull","chin","dip","lunge","clean","snatch","thruster","hinge"];
+  function isCompound(name: string): boolean {
+    const n = name.toLowerCase();
+    return COMPOUND_KEYWORDS.some(k => n.includes(k));
+  }
+  function calcCaloriesVolume(exs: typeof exercises): number {
+    const total = exs.reduce((sum, ex) => {
+      const coeff = isCompound(ex.exercise) ? 0.013 : 0.008; // kcal per lb-rep
+      return sum + ex.weightLbs * ex.reps * ex.sets * coeff;
+    }, 0);
+    return Math.max(0, Math.round(total * 10) / 10);
   }
 
   let bodyWeightLogged = false;
@@ -247,39 +270,43 @@ router.post("/workouts/log", async (req, res): Promise<void> => {
       bodyWeightLogged = true;
     }
 
-    if (durationMinutes != null && durationMinutes > 0) {
-      // Get latest bodyweight for calorie calculation
-      const latestMetric = await tx
-        .select({ weightLbs: bodyMetricsTable.weightLbs })
-        .from(bodyMetricsTable)
-        .where(eq(bodyMetricsTable.userId, userId))
-        .orderBy(desc(bodyMetricsTable.date))
-        .limit(1);
+    // Get latest bodyweight for calorie calculation
+    const latestMetric = await tx
+      .select({ weightLbs: bodyMetricsTable.weightLbs })
+      .from(bodyMetricsTable)
+      .where(eq(bodyMetricsTable.userId, userId))
+      .orderBy(desc(bodyMetricsTable.date))
+      .limit(1);
 
-      // Use provided bodyweight if available, fallback to stored
-      const weightForCalc = bodyWeightLbs != null
-        ? bodyWeightLbs / KG_TO_LBS
-        : latestMetric.length > 0 && latestMetric[0].weightLbs != null
-          ? Number(latestMetric[0].weightLbs) / KG_TO_LBS
-          : null;
+    const weightForCalcLbs = bodyWeightLbs != null
+      ? bodyWeightLbs
+      : latestMetric.length > 0 && latestMetric[0].weightLbs != null
+        ? Number(latestMetric[0].weightLbs)
+        : null;
+    const weightForCalcKg = weightForCalcLbs != null ? weightForCalcLbs / KG_TO_LBS : null;
 
-      if (weightForCalc != null) {
-        const MET = 5.0;
-        caloriesBurned = Math.round(MET * weightForCalc * (durationMinutes / 60) * 10) / 10;
-      }
+    if (avgHeartRate != null && age != null && gender != null && weightForCalcKg != null && durationMinutes != null && durationMinutes > 0) {
+      // Primary: Keytel HR-based formula (requires timer + Apple Health HR)
+      caloriesBurned = calcCaloriesKeytel(avgHeartRate, weightForCalcKg, age, gender, durationMinutes);
+    } else {
+      // Fallback: volume-based formula (always available from logged sets)
+      caloriesBurned = calcCaloriesVolume(exercises);
+    }
 
+    const sessionDuration = durationMinutes != null && durationMinutes > 0 ? durationMinutes : null;
+    if (sessionDuration != null || caloriesBurned != null) {
       await tx
         .insert(workoutSessionsTable)
         .values({
           userId,
           date,
-          durationMinutes,
+          durationMinutes: sessionDuration,
           caloriesBurned: caloriesBurned != null ? caloriesBurned.toFixed(2) : null,
         })
         .onConflictDoUpdate({
           target: [workoutSessionsTable.userId, workoutSessionsTable.date],
           set: {
-            durationMinutes,
+            durationMinutes: sessionDuration,
             caloriesBurned: caloriesBurned != null ? caloriesBurned.toFixed(2) : null,
           },
         });

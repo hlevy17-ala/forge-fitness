@@ -1328,6 +1328,16 @@ components:
         durationMinutes:
           type: ["integer", "null"]
           description: Optional workout duration in minutes for calorie calculation
+        avgHeartRate:
+          type: ["number", "null"]
+          description: Average heart rate during the workout (bpm) from Apple Health
+        age:
+          type: ["integer", "null"]
+          description: User age in years from Apple Health for calorie formula
+        gender:
+          type: ["string", "null"]
+          enum: ["male", "female", null]
+          description: User biological sex from Apple Health for calorie formula
       required:
         - date
         - exercises

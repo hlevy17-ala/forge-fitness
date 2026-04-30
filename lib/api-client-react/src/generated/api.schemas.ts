@@ -128,6 +128,18 @@ export interface LogWorkoutExercise {
   sets: number;
 }
 
+/**
+ * User biological sex from Apple Health for calorie formula
+ * @nullable
+ */
+export type LogWorkoutBodyGender = typeof LogWorkoutBodyGender[keyof typeof LogWorkoutBodyGender] | null;
+
+
+export const LogWorkoutBodyGender = {
+  male: 'male',
+  female: 'female',
+} as const;
+
 export interface LogWorkoutBody {
   /** Workout date (YYYY-MM-DD) */
   date: string;
@@ -147,6 +159,21 @@ export interface LogWorkoutBody {
      * @nullable
      */
   durationMinutes?: number | null;
+  /**
+     * Average heart rate during the workout (bpm) from Apple Health
+     * @nullable
+     */
+  avgHeartRate?: number | null;
+  /**
+     * User age in years from Apple Health for calorie formula
+     * @nullable
+     */
+  age?: number | null;
+  /**
+     * User biological sex from Apple Health for calorie formula
+     * @nullable
+     */
+  gender?: LogWorkoutBodyGender;
 }
 
 export interface LogWorkoutResponse {

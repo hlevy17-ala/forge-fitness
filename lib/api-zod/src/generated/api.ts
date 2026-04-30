@@ -188,7 +188,10 @@ export const LogWorkoutBody = zod.object({
 })),
   "notes": zod.string().nullish().describe('Optional session notes'),
   "bodyWeightLbs": zod.number().nullish().describe('Optional body weight to log alongside the workout'),
-  "durationMinutes": zod.number().nullish().describe('Optional workout duration in minutes for calorie calculation')
+  "durationMinutes": zod.number().nullish().describe('Optional workout duration in minutes for calorie calculation'),
+  "avgHeartRate": zod.number().nullish().describe('Average heart rate during the workout (bpm) from Apple Health'),
+  "age": zod.number().nullish().describe('User age in years from Apple Health for calorie formula'),
+  "gender": zod.union([zod.literal('male'),zod.literal('female'),zod.literal(null)]).nullish().describe('User biological sex from Apple Health for calorie formula')
 })
 
 export const LogWorkoutResponse = zod.object({

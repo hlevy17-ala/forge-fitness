@@ -8,6 +8,11 @@ interface HealthKitPlugin {
     calories: number;
     activityType?: string;
   }): Promise<{ saved: boolean }>;
+  readUserProfile(): Promise<{ age: number; biologicalSex: string }>;
+  readHeartRateSamples(options: {
+    startDate: string;
+    endDate: string;
+  }): Promise<{ avgHeartRate: number }>;
 }
 
 const HealthKit = registerPlugin<HealthKitPlugin>("HealthKit");
@@ -19,6 +24,43 @@ export async function requestHealthKitAuthorization(): Promise<boolean> {
     return result.authorized;
   } catch {
     return false;
+  }
+}
+
+export async function readUserProfileFromHealthKit(): Promise<{
+  age: number | null;
+  biologicalSex: "male" | "female" | null;
+}> {
+  if (!Capacitor.isNativePlatform()) return { age: null, biologicalSex: null };
+  try {
+    const result = await HealthKit.readUserProfile();
+    return {
+      age: result.age > 0 ? result.age : null,
+      biologicalSex:
+        result.biologicalSex === "male"
+          ? "male"
+          : result.biologicalSex === "female"
+            ? "female"
+            : null,
+    };
+  } catch {
+    return { age: null, biologicalSex: null };
+  }
+}
+
+export async function readAvgHeartRateFromHealthKit(
+  startDate: Date,
+  endDate: Date,
+): Promise<number | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    const result = await HealthKit.readHeartRateSamples({
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+    });
+    return result.avgHeartRate > 0 ? result.avgHeartRate : null;
+  } catch {
+    return null;
   }
 }
 
