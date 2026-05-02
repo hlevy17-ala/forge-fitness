@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, isNull } from "drizzle-orm";
 import { randomBytes } from "crypto";
-import { db, usersTable, otpTokensTable, sessionsTable, workoutSetsTable, bodyMetricsTable, calorieLogsTable, workoutTemplatesTable, cardioSessionsTable, cardioTemplatesTable } from "@workspace/db";
+import { db, usersTable, otpTokensTable, sessionsTable, workoutSetsTable, bodyMetricsTable, calorieLogsTable, workoutTemplatesTable, cardioSessionsTable, cardioTemplatesTable, bodyMeasurementsTable, workoutSessionsTable } from "@workspace/db";
 import {
   RequestOtpBody,
   RequestOtpResponse,
@@ -158,6 +158,23 @@ router.post("/auth/logout", authMiddleware, async (req, res): Promise<void> => {
   const token = req.headers.authorization!.slice(7);
   await db.delete(sessionsTable).where(eq(sessionsTable.token, token));
   res.json(LogoutResponse.parse({ message: "Logged out" }));
+});
+
+router.delete("/auth/account", authMiddleware, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  // Delete all user data in dependency order, then the user record itself
+  await db.delete(workoutSetsTable).where(eq(workoutSetsTable.userId, userId));
+  await db.delete(bodyMetricsTable).where(eq(bodyMetricsTable.userId, userId));
+  await db.delete(calorieLogsTable).where(eq(calorieLogsTable.userId, userId));
+  await db.delete(workoutTemplatesTable).where(eq(workoutTemplatesTable.userId, userId));
+  await db.delete(workoutSessionsTable).where(eq(workoutSessionsTable.userId, userId));
+  await db.delete(cardioSessionsTable).where(eq(cardioSessionsTable.userId, userId));
+  await db.delete(cardioTemplatesTable).where(eq(cardioTemplatesTable.userId, userId));
+  await db.delete(bodyMeasurementsTable).where(eq(bodyMeasurementsTable.userId, userId));
+  await db.delete(otpTokensTable).where(eq(otpTokensTable.userId, userId));
+  await db.delete(sessionsTable).where(eq(sessionsTable.userId, userId));
+  await db.delete(usersTable).where(eq(usersTable.id, userId));
+  res.json({ message: "Account deleted" });
 });
 
 router.get("/auth/me", authMiddleware, async (req, res): Promise<void> => {

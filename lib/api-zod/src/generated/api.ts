@@ -75,6 +75,15 @@ export const GetMeResponse = zod.object({
 
 
 /**
+ * Permanently deletes the authenticated user's account and all associated data
+ * @summary Delete account
+ */
+export const DeleteAccountResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */

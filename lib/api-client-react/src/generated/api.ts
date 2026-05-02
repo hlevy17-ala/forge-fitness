@@ -449,6 +449,77 @@ export function useGetMe<TData = Awaited<ReturnType<typeof getMe>>, TError = Err
 
 
 /**
+ * Permanently deletes the authenticated user's account and all associated data
+ * @summary Delete account
+ */
+export const getDeleteAccountUrl = () => {
+
+
+
+
+  return `/api/auth/account`
+}
+
+export const deleteAccount = async ( options?: RequestInit): Promise<AuthRequestOtpResponse> => {
+
+  return customFetch<AuthRequestOtpResponse>(getDeleteAccountUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAccountMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAccount>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAccount>>, TError,void, TContext> => {
+
+const mutationKey = ['deleteAccount'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAccount>>, void> = () => {
+
+
+          return  deleteAccount(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAccountMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAccount>>>
+
+    export type DeleteAccountMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete account
+ */
+export const useDeleteAccount = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAccount>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAccount>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteAccountMutationOptions(options));
+    }
+
+/**
  * Returns server health status
  * @summary Health check
  */

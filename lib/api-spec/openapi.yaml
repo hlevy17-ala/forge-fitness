@@ -124,6 +124,22 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
 
+  /auth/account:
+    delete:
+      operationId: deleteAccount
+      tags: [auth]
+      summary: Delete account
+      description: Permanently deletes the authenticated user's account and all associated data
+      responses:
+        "200":
+          description: Account deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRequestOtpResponse"
+        "401":
+          description: Unauthorized
+
   /healthz:
     get:
       operationId: healthCheck

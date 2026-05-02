@@ -1,10 +1,29 @@
 import { useState } from "react";
-import { Dumbbell, Activity, Scale, Upload, Flame, BarChart2, Plus, History, AlertTriangle, Download, LogOut, BookMarked } from "lucide-react";
+import { Dumbbell, Activity, Scale, Upload, Flame, BarChart2, Plus, History, AlertTriangle, Download, LogOut, BookMarked, Trash2, ChevronDown } from "lucide-react";
 import { ForgeIcon } from "@/components/ForgeIcon";
 import { useAuth } from "@/context/AuthContext";
 import { useLocation } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useDeleteAccount } from "@workspace/api-client-react";
+import { clearToken } from "@/lib/auth";
 import { CsvUpload } from "@/components/CsvUpload";
 import { ExerciseProgress } from "@/components/ExerciseProgress";
 import { MuscleGroupProgress } from "@/components/MuscleGroupProgress";
@@ -33,6 +52,19 @@ export default function Dashboard() {
   const [initialCardioTemplate, setInitialCardioTemplate] = useState<CardioTemplateItem | null>(null);
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const deleteAccountMutation = useDeleteAccount();
+
+  const handleDeleteAccount = () => {
+    setDeleting(true);
+    deleteAccountMutation.mutate(undefined, {
+      onSettled: () => {
+        clearToken();
+        window.location.href = "/";
+      },
+    });
+  };
 
   const handleUseStrengthTemplate = (id: number) => {
     setInitialStrengthTemplateId(id);
@@ -64,15 +96,32 @@ export default function Dashboard() {
             <span className="font-sans font-extrabold text-xl tracking-widest uppercase text-foreground">Forge</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              onClick={logout}
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:text-foreground"
-              title="Log out"
-            >
-              <LogOut className="w-4 h-4" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground gap-1">
+                  <LogOut className="w-4 h-4" />
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={logout}>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Log out
+                </DropdownMenuItem>
+                {user && !user.isGuest && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setDeleteDialogOpen(true)}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete account
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               onClick={() => setTemplatesOpen(true)}
               variant="outline"
@@ -225,6 +274,27 @@ export default function Dashboard() {
           </div>
         </Tabs>
       </main>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete your account and all your data — workouts, body metrics, templates, and everything else. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAccount}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting…" : "Delete my account"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
