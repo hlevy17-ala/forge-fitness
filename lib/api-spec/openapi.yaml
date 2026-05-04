@@ -1528,7 +1528,7 @@ components:
 
     CardioExerciseType:
       type: string
-      enum: [treadmill, outdoor_run, bike, elliptical]
+      description: "Known values: treadmill, outdoor_run, bike, elliptical. Any custom string is also accepted."
 
     WorkoutSession:
       type: object

@@ -265,15 +265,10 @@ export interface LastSession {
   exercises: LastSessionExercise[];
 }
 
-export type CardioExerciseType = typeof CardioExerciseType[keyof typeof CardioExerciseType];
-
-
-export const CardioExerciseType = {
-  treadmill: 'treadmill',
-  outdoor_run: 'outdoor_run',
-  bike: 'bike',
-  elliptical: 'elliptical',
-} as const;
+/**
+ * Known values: treadmill, outdoor_run, bike, elliptical. Any custom string is also accepted.
+ */
+export type CardioExerciseType = string;
 
 export type WorkoutSessionType = typeof WorkoutSessionType[keyof typeof WorkoutSessionType];
 

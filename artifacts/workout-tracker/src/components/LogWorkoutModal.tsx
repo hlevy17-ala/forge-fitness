@@ -82,12 +82,13 @@ interface Props {
   initialCardioTemplate?: CardioTemplateItem | null;
 }
 
-const CARDIO_TYPES: { value: CardioExerciseType; label: string }[] = [
+const PRESET_CARDIO_TYPES: { value: CardioExerciseType; label: string }[] = [
   { value: "treadmill", label: "Treadmill" },
   { value: "outdoor_run", label: "Outdoor Run" },
   { value: "bike", label: "Bike" },
   { value: "elliptical", label: "Elliptical" },
 ];
+const PRESET_CARDIO_VALUES = new Set(PRESET_CARDIO_TYPES.map(t => t.value));
 
 export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, initialCardioTemplate }: Props) {
   const [mode, setMode] = useState<"strength" | "cardio">("strength");
@@ -122,6 +123,7 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
 
   // Cardio state
   const [cardioType, setCardioType] = useState<CardioExerciseType>("treadmill");
+  const [customCardioName, setCustomCardioName] = useState("");
   const [cardioDuration, setCardioDuration] = useState("");
   const [cardioDistance, setCardioDistance] = useState("");
   const [cardioIncline, setCardioIncline] = useState("");
@@ -424,12 +426,15 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
   const handleCardioSave = () => {
     if (!cardioDuration || cardioMutation.isPending) return;
     setErrorMsg(null);
+    const resolvedExerciseType = !PRESET_CARDIO_VALUES.has(cardioType) || cardioType === "__custom__"
+      ? (customCardioName.trim() || "other")
+      : cardioType;
     const durationMins = workoutStarted ? Math.round(elapsedSeconds / 60) : parseInt(cardioDuration, 10);
     cardioMutation.mutate(
       {
         data: {
           date,
-          exerciseType: cardioType,
+          exerciseType: resolvedExerciseType,
           durationMinutes: durationMins,
           distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null,
           inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null,
@@ -445,7 +450,7 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
           if (result.caloriesBurned && durationMins) {
             const endTime = new Date();
             const startTime = new Date(endTime.getTime() - durationMins * 60 * 1000);
-            saveWorkoutToHealthKit({ startDate: startTime, endDate: endTime, calories: result.caloriesBurned, activityType: cardioType }).catch(console.error);
+            saveWorkoutToHealthKit({ startDate: startTime, endDate: endTime, calories: result.caloriesBurned, activityType: resolvedExerciseType }).catch(console.error);
           }
           queryClient.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && String(q.queryKey[0]).startsWith("/api/workouts") });
         },
@@ -471,6 +476,7 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
     setExpandedTemplateId(null);
     setHistoryExercise(null);
     setCardioType("treadmill");
+    setCustomCardioName("");
     setCardioDuration("");
     setCardioDistance("");
     setCardioIncline("");
@@ -517,7 +523,13 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
   }
   if (initialCardioTemplate && mode === "strength" && blocks.length === 1 && !blocks[0].exercise) {
     setMode("cardio");
-    setCardioType(initialCardioTemplate.exerciseType as CardioExerciseType);
+    if (PRESET_CARDIO_VALUES.has(initialCardioTemplate.exerciseType)) {
+      setCardioType(initialCardioTemplate.exerciseType as CardioExerciseType);
+      setCustomCardioName("");
+    } else {
+      setCardioType("__custom__" as CardioExerciseType);
+      setCustomCardioName(initialCardioTemplate.exerciseType);
+    }
     setCardioDuration(String(initialCardioTemplate.durationMinutes));
     setCardioDistance(initialCardioTemplate.distanceMiles != null ? String(initialCardioTemplate.distanceMiles) : "");
     setCardioIncline(initialCardioTemplate.inclinePercent != null ? String(initialCardioTemplate.inclinePercent) : "");
@@ -649,7 +661,18 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
                       <div className="flex flex-wrap gap-2">
                         {cardioTemplates.map(t => (
                           <div key={t.id} className="flex items-center gap-1">
-                            <button type="button" onClick={() => { setCardioType(t.exerciseType as CardioExerciseType); setCardioDuration(String(t.durationMinutes)); setCardioDistance(t.distanceMiles != null ? String(t.distanceMiles) : ""); setCardioIncline(t.inclinePercent != null ? String(t.inclinePercent) : ""); }}
+                            <button type="button" onClick={() => {
+                              if (PRESET_CARDIO_VALUES.has(t.exerciseType)) {
+                                setCardioType(t.exerciseType as CardioExerciseType);
+                                setCustomCardioName("");
+                              } else {
+                                setCardioType("__custom__" as CardioExerciseType);
+                                setCustomCardioName(t.exerciseType);
+                              }
+                              setCardioDuration(String(t.durationMinutes));
+                              setCardioDistance(t.distanceMiles != null ? String(t.distanceMiles) : "");
+                              setCardioIncline(t.inclinePercent != null ? String(t.inclinePercent) : "");
+                            }}
                               className="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-colors">{t.name}</button>
                             <button type="button" onClick={() => deleteCardioTemplateMutation.mutate({ id: t.id }, { onSuccess: () => queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).includes("cardio-templates") }) })} className="text-muted-foreground hover:text-destructive">
                               <Trash2 className="w-3 h-3" />
@@ -662,13 +685,25 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium">Type</Label>
                     <div className="grid grid-cols-2 gap-2">
-                      {CARDIO_TYPES.map(t => (
-                        <button key={t.value} type="button" onClick={() => setCardioType(t.value)}
+                      {PRESET_CARDIO_TYPES.map(t => (
+                        <button key={t.value} type="button" onClick={() => { setCardioType(t.value); setCustomCardioName(""); }}
                           className={`py-2 px-3 rounded-md text-sm font-medium border transition-colors ${cardioType === t.value ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground hover:border-primary"}`}>
                           {t.label}
                         </button>
                       ))}
+                      <button type="button" onClick={() => setCardioType("__custom__" as CardioExerciseType)}
+                        className={`py-2 px-3 rounded-md text-sm font-medium border transition-colors ${cardioType === "__custom__" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground hover:border-primary"}`}>
+                        Other
+                      </button>
                     </div>
+                    {cardioType === "__custom__" && (
+                      <Input
+                        value={customCardioName}
+                        onChange={e => setCustomCardioName(e.target.value)}
+                        placeholder="e.g. Swimming, Rowing, Jump Rope…"
+                        className="bg-background border-border text-foreground mt-2"
+                      />
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
@@ -704,9 +739,9 @@ export function LogWorkoutModal({ open, onClose, initialStrengthTemplateId, init
                       <Input value={cardioTemplateName} onChange={e => setCardioTemplateName(e.target.value)} placeholder="Template name" className="bg-background border-border text-foreground text-sm" autoFocus
                         onKeyDown={e => {
                           if (e.key === "Escape") { setSavingCardioTemplate(false); setCardioTemplateName(""); }
-                          if (e.key === "Enter" && cardioTemplateName.trim()) createCardioTemplateMutation.mutate({ data: { name: cardioTemplateName.trim(), exerciseType: cardioType, durationMinutes: parseInt(cardioDuration), distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null, inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null } }, { onSuccess: () => { setSavingCardioTemplate(false); setCardioTemplateName(""); queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).includes("cardio-templates") }); } });
+                          if (e.key === "Enter" && cardioTemplateName.trim()) createCardioTemplateMutation.mutate({ data: { name: cardioTemplateName.trim(), exerciseType: cardioType === "__custom__" ? (customCardioName.trim() || "other") : cardioType, durationMinutes: parseInt(cardioDuration), distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null, inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null } }, { onSuccess: () => { setSavingCardioTemplate(false); setCardioTemplateName(""); queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).includes("cardio-templates") }); } });
                         }} />
-                      <Button size="sm" onClick={() => { if (!cardioTemplateName.trim()) return; createCardioTemplateMutation.mutate({ data: { name: cardioTemplateName.trim(), exerciseType: cardioType, durationMinutes: parseInt(cardioDuration), distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null, inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null } }, { onSuccess: () => { setSavingCardioTemplate(false); setCardioTemplateName(""); queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).includes("cardio-templates") }); } }); }} disabled={!cardioTemplateName.trim()} className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0">Save</Button>
+                      <Button size="sm" onClick={() => { if (!cardioTemplateName.trim()) return; createCardioTemplateMutation.mutate({ data: { name: cardioTemplateName.trim(), exerciseType: cardioType === "__custom__" ? (customCardioName.trim() || "other") : cardioType, durationMinutes: parseInt(cardioDuration), distanceMiles: cardioDistance ? parseFloat(cardioDistance) : null, inclinePercent: cardioIncline ? parseFloat(cardioIncline) : null } }, { onSuccess: () => { setSavingCardioTemplate(false); setCardioTemplateName(""); queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).includes("cardio-templates") }); } }); }} disabled={!cardioTemplateName.trim()} className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0">Save</Button>
                       <Button size="sm" variant="ghost" onClick={() => { setSavingCardioTemplate(false); setCardioTemplateName(""); }} className="shrink-0">Cancel</Button>
                     </div>
                   )}
