@@ -148,7 +148,7 @@ public class HealthKitPlugin: CAPPlugin, CAPBridgedPlugin {
             duration: endDate.timeIntervalSince(startDate),
             totalEnergyBurned: energyBurned,
             totalDistance: nil,
-            metadata: [HKMetadataKeyWasUserEntered: true]
+            metadata: nil
         )
 
         healthStore.save(workout) { success, error in
